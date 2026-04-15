@@ -1,5 +1,7 @@
+import base64
 import hashlib
 import os
+import secrets
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -26,6 +28,7 @@ from sqlalchemy import (
     create_engine,
     func,
     or_,
+    text,
 )
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
@@ -88,6 +91,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String)
     picture = Column(String)
+    password_hash = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     feeds = relationship("Feed", back_populates="user", cascade="all, delete-orphan")
@@ -294,6 +298,19 @@ class ArticleShare(Base):
 Base.metadata.create_all(bind=engine)
 
 
+def ensure_schema():
+    with engine.begin() as conn:
+        columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+        }
+        if "password_hash" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR"))
+
+
+ensure_schema()
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -319,6 +336,115 @@ def get_current_user(request: Request, db: Session) -> Optional[User]:
     return user
 
 
+def is_local_auth_enabled(request: Request) -> bool:
+    hostname = (request.url.hostname or "").lower()
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    return os.getenv("LOCAL_AUTH_ENABLED", "").lower() in {"1", "true", "yes", "on"}
+
+
+def local_account_email(identifier: str) -> str:
+    normalized = identifier.strip().lower()
+    if "@" in normalized:
+        return normalized
+    return f"{normalized}@local.feedr"
+
+
+def password_display_name(identifier: str) -> str:
+    base = identifier.strip()
+    if not base:
+        return "Local User"
+    return base.split("@", 1)[0]
+
+
+def hash_password(password: str, salt: Optional[str] = None) -> str:
+    salt = salt or base64.urlsafe_b64encode(os.urandom(16)).decode("utf-8")
+    iterations = 390000
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations
+    )
+    encoded = base64.urlsafe_b64encode(digest).decode("utf-8")
+    return f"pbkdf2_sha256${iterations}${salt}${encoded}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, iteration_text, salt, expected = stored_hash.split("$", 3)
+    except ValueError:
+        return False
+    if algorithm != "pbkdf2_sha256":
+        return False
+    candidate = hash_password(password, salt=salt)
+    return secrets.compare_digest(candidate, stored_hash)
+
+
+def friendship_data_for_user(user: User, db: Session) -> dict:
+    sent = db.query(Friendship).filter(Friendship.requester_user_id == user.id).all()
+    received = (
+        db.query(Friendship).filter(Friendship.addressee_user_id == user.id).all()
+    )
+
+    friends = []
+    pending_sent = []
+    pending_received = []
+
+    for friendship in sent:
+        other = db.query(User).filter(User.id == friendship.addressee_user_id).first()
+        if not other:
+            continue
+        item = {
+            "friendship_id": friendship.id,
+            "user_id": other.id,
+            "email": other.email,
+            "name": other.name,
+            "status": friendship.status,
+            "created_at": friendship.created_at.isoformat()
+            if friendship.created_at
+            else None,
+            "accepted_at": friendship.accepted_at.isoformat()
+            if friendship.accepted_at
+            else None,
+            "direction": "outgoing",
+        }
+        if friendship.status == "accepted":
+            friends.append(item)
+        else:
+            pending_sent.append(item)
+
+    for friendship in received:
+        other = db.query(User).filter(User.id == friendship.requester_user_id).first()
+        if not other:
+            continue
+        item = {
+            "friendship_id": friendship.id,
+            "user_id": other.id,
+            "email": other.email,
+            "name": other.name,
+            "status": friendship.status,
+            "created_at": friendship.created_at.isoformat()
+            if friendship.created_at
+            else None,
+            "accepted_at": friendship.accepted_at.isoformat()
+            if friendship.accepted_at
+            else None,
+            "direction": "incoming",
+        }
+        if friendship.status == "accepted":
+            friends.append(item)
+        elif friendship.status == "pending":
+            pending_received.append(item)
+
+    friends.sort(key=lambda item: (item["name"] or item["email"]).lower())
+    pending_sent.sort(key=lambda item: (item["name"] or item["email"]).lower())
+    pending_received.sort(key=lambda item: (item["name"] or item["email"]).lower())
+
+    return {
+        "friends": friends,
+        "pending_sent": pending_sent,
+        "pending_received": pending_received,
+    }
+
+
 @app.get("/up")
 async def up():
     return {
@@ -341,7 +467,79 @@ async def index(request: Request, db: Session = Depends(get_db)):
 async def login_page(request: Request, db: Session = Depends(get_db)):
     if get_current_user(request, db):
         return RedirectResponse(url="/")
-    return templates.TemplateResponse(request, "login.html")
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"local_auth_enabled": is_local_auth_enabled(request)},
+    )
+
+
+@app.post("/auth/local", response_class=HTMLResponse)
+async def auth_local(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not is_local_auth_enabled(request):
+        return JSONResponse({"error": "Local auth is disabled"}, status_code=403)
+
+    username = username.strip()
+    error = None
+    if not username or not password:
+        error = "Enter both username and password."
+    elif len(password) < 8:
+        error = "Use at least 8 characters for the password."
+
+    if error:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": error,
+                "local_auth_enabled": True,
+                "last_username": username,
+            },
+            status_code=400,
+        )
+
+    email = local_account_email(username)
+    user = db.query(User).filter(User.email == email).first()
+
+    if user and not user.password_hash:
+        error = (
+            "That account exists without a local password. Sign in with Google instead."
+        )
+    elif user and not verify_password(password, user.password_hash):
+        error = "Incorrect password."
+    elif not user:
+        user = User(
+            email=email,
+            name=password_display_name(username),
+            password_hash=hash_password(password),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    if error:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": error,
+                "local_auth_enabled": True,
+                "last_username": username,
+            },
+            status_code=400,
+        )
+
+    request.session["user"] = {
+        "email": user.email,
+        "name": user.name,
+        "picture": user.picture,
+    }
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/auth/google")
@@ -868,51 +1066,7 @@ async def api_friends(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
-    sent = db.query(Friendship).filter(Friendship.requester_user_id == user.id).all()
-    received = (
-        db.query(Friendship).filter(Friendship.addressee_user_id == user.id).all()
-    )
-
-    friends = []
-    pending_sent = []
-    pending_received = []
-
-    for f in sent:
-        other = db.query(User).filter(User.id == f.addressee_user_id).first()
-        item = {
-            "friendship_id": f.id,
-            "user_id": other.id,
-            "email": other.email,
-            "name": other.name,
-            "status": f.status,
-            "created_at": f.created_at.isoformat() if f.created_at else None,
-        }
-        if f.status == "accepted":
-            friends.append(item)
-        else:
-            pending_sent.append(item)
-
-    for f in received:
-        other = db.query(User).filter(User.id == f.requester_user_id).first()
-        item = {
-            "friendship_id": f.id,
-            "user_id": other.id,
-            "email": other.email,
-            "name": other.name,
-            "status": f.status,
-            "created_at": f.created_at.isoformat() if f.created_at else None,
-        }
-        if f.status == "accepted":
-            friends.append(item)
-        elif f.status == "pending":
-            pending_received.append(item)
-
-    return {
-        "friends": friends,
-        "pending_sent": pending_sent,
-        "pending_received": pending_received,
-    }
+    return friendship_data_for_user(user, db)
 
 
 @app.post("/api/friends/request")
@@ -951,8 +1105,30 @@ async def api_request_friend(
     if existing:
         if existing.status == "accepted":
             return JSONResponse({"error": "Already friends"}, status_code=409)
+        if existing.addressee_user_id == user.id:
+            requester = (
+                db.query(User).filter(User.id == existing.requester_user_id).first()
+            )
+            requester_name = None
+            if requester:
+                requester_name = requester.name or requester.email
+            message = "This friend request is waiting for your reply."
+            if requester_name:
+                message = f"{requester_name} already sent you a request. Accept or decline it from Profile."
+            return JSONResponse(
+                {
+                    "error": message,
+                    "friendship_id": existing.id,
+                    "direction": "incoming",
+                },
+                status_code=409,
+            )
         return JSONResponse(
-            {"error": "Request already pending", "friendship_id": existing.id},
+            {
+                "error": "Request already pending",
+                "friendship_id": existing.id,
+                "direction": "outgoing",
+            },
             status_code=409,
         )
 
@@ -1372,3 +1548,18 @@ async def reader_settings(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse(request, "settings.html", {"user": user})
+
+
+@app.get("/reader/profile", response_class=HTMLResponse)
+async def reader_profile(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login")
+    return templates.TemplateResponse(
+        request,
+        "profile.html",
+        {
+            "user": user,
+            "friendships": friendship_data_for_user(user, db),
+        },
+    )

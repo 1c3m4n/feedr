@@ -7,3 +7,13 @@ __pycache__
 .git
 .gitignore
 .github
+playwright-artifacts/
+playwright-*.png
+playwright-*.json
+local-auth-*.txt
+localhost-*.txt
+localhost-*.json
+ui-*.txt
+ui-*.json
+test-storage
+test-storage-ui

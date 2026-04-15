@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>feedr - Profile</title>
+    <style>
+        :root {
+            --bg: #edf2eb;
+            --surface: #f8fbf5;
+            --surface-alt: #f1f6ef;
+            --border: #c8d3c5;
+            --border-strong: #aab9a7;
+            --text: #293129;
+            --text-secondary: #617062;
+            --accent: #6a8798;
+            --accent-hover: #567283;
+            --danger: #9a3e3e;
+            --danger-soft: #f3e4e1;
+            --success-soft: #e1ece4;
+            --scrollbar-track: #e1e8de;
+            --scrollbar-thumb: #b3c0ae;
+            --scrollbar-thumb-hover: #95a592;
+            --shadow: 0 10px 30px rgba(45, 68, 49, 0.08);
+        }
+        [data-theme="dark"] {
+            --bg: #171c19;
+            --surface: #1f2622;
+            --surface-alt: #252d28;
+            --border: #38433b;
+            --border-strong: #516055;
+            --text: #e5ede2;
+            --text-secondary: #a9b6aa;
+            --accent: #8daabd;
+            --accent-hover: #a4bfd0;
+            --danger: #e29a92;
+            --danger-soft: #352321;
+            --success-soft: #24342b;
+            --scrollbar-track: #242c27;
+            --scrollbar-thumb: #55665b;
+            --scrollbar-thumb-hover: #6b7f71;
+            --shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar {
+            width: 11px;
+            height: 11px;
+        }
+        *::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 999px;
+            border: 2px solid var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
+        }
+        .header {
+            background: linear-gradient(to bottom, var(--surface), var(--surface-alt));
+            border-bottom: 1px solid var(--border);
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .header h1 {
+            font-size: 30px;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-weight: 600;
+        }
+        .header-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .header a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            padding: 7px 12px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.45);
+        }
+        .container {
+            max-width: 920px;
+            margin: 42px auto;
+            padding: 0 24px 40px;
+        }
+        .hero,
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .hero {
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .eyebrow {
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+        }
+        .hero h2,
+        .card h2 {
+            font-size: 28px;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .copy {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .identity {
+            margin-top: 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        .avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            object-fit: cover;
+        }
+        .identity-name {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .identity-email {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        .card {
+            padding: 26px;
+            margin-bottom: 20px;
+        }
+        .add-form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+        .add-form input {
+            flex: 1;
+            min-width: 240px;
+            padding: 12px 14px;
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            background: var(--surface-alt);
+            color: var(--text);
+            font-size: 14px;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 15px;
+            border: 1px solid var(--border-strong);
+            border-radius: 999px;
+            background: var(--surface-alt);
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+        .btn.danger {
+            color: var(--danger);
+            border-color: rgba(154, 62, 62, 0.22);
+            background: transparent;
+        }
+        .feedback {
+            display: none;
+            margin-top: 12px;
+            padding: 11px 13px;
+            border-radius: 12px;
+            background: var(--success-soft);
+            color: var(--text);
+            font-size: 13px;
+        }
+        .feedback.error {
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .section-header span {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+        .friend-list {
+            display: grid;
+            gap: 10px;
+        }
+        .friend-item {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--surface-alt);
+            padding: 16px;
+        }
+        .friend-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .friend-name {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+        .friend-email,
+        .friend-meta,
+        .empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--border-strong);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .friend-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .empty {
+            padding: 6px 0;
+        }
+        @media (max-width: 640px) {
+            .header {
+                padding: 12px 16px;
+            }
+            .header h1,
+            .hero h2,
+            .card h2 {
+                font-size: 24px;
+            }
+            .container {
+                margin: 24px auto;
+                padding: 0 16px 32px;
+            }
+            .hero,
+            .card {
+                border-radius: 16px;
+            }
+            .hero,
+            .card {
+                padding: 22px;
+            }
+            .friend-top {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Profile</h1>
+        <div class="header-links">
+            <a href="/reader/settings">Settings</a>
+            <a href="/reader">← Back to reader</a>
+        </div>
+    </div>
+    <div class="container">
+        <section class="hero">
+            <div class="eyebrow">Account</div>
+            <h2>People you read with</h2>
+            <p class="copy">Manage the people who can share articles with you, review pending requests, and remove old connections without leaving feedr.</p>
+            <div class="identity">
+                {% if user.picture %}
+                <img class="avatar" src="{{ user.picture }}" alt="{{ user.name or user.email }}">
+                {% else %}
+                <div class="avatar"></div>
+                {% endif %}
+                <div>
+                    <div class="identity-name">{{ user.name or user.email }}</div>
+                    <div class="identity-email">{{ user.email }}</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Add a friend</h2>
+            <p class="copy">Send an invitation by email. If they already invited you, feedr will point you to the request so you can confirm it explicitly.</p>
+            <form class="add-form" onsubmit="return submitFriendRequest(event)">
+                <input id="friendEmail" type="email" placeholder="friend@example.com" required>
+                <button class="btn primary" type="submit">Send invite</button>
+            </form>
+            <div id="friendFeedback" class="feedback"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-header">
+                <h2>Pending requests</h2>
+                <span id="pendingCount"></span>
+            </div>
+            <div id="pendingReceivedList" class="friend-list"></div>
+            <div id="pendingSentList" class="friend-list" style="margin-top:10px"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-header">
+                <h2>Friends</h2>
+                <span id="friendsCount"></span>
+            </div>
+            <div id="friendsList" class="friend-list"></div>
+        </section>
+    </div>
+
+    <script>
+        let friendState = {{ friendships | tojson }};
+
+        function initTheme() {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        initTheme();
+
+        function setFeedback(message, isError = false) {
+            const el = document.getElementById('friendFeedback');
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                el.classList.remove('error');
+                return;
+            }
+            el.textContent = message;
+            el.style.display = 'block';
+            el.classList.toggle('error', isError);
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderFriendCard(friend, badge, actions) {
+            const name = escapeHtml(friend.name || friend.email);
+            const email = escapeHtml(friend.email);
+            return `
+                <div class="friend-item">
+                    <div class="friend-top">
+                        <div>
+                            <div class="friend-name">${name}</div>
+                            <div class="friend-email">${email}</div>
+                        </div>
+                        <div class="badge">${badge}</div>
+                    </div>
+                    <div class="friend-actions">${actions}</div>
+                </div>
+            `;
+        }
+
+        function renderFriends() {
+            const incoming = friendState.pending_received || [];
+            const outgoing = friendState.pending_sent || [];
+            const friends = friendState.friends || [];
+
+            document.getElementById('pendingCount').textContent = `${incoming.length + outgoing.length} open`;
+            document.getElementById('friendsCount').textContent = `${friends.length} total`;
+
+            document.getElementById('pendingReceivedList').innerHTML = incoming.length
+                ? incoming.map(friend => renderFriendCard(
+                    friend,
+                    'Needs reply',
+                    `<button class="btn primary" onclick="respondToFriendRequest(${friend.friendship_id}, 'accept')">Accept</button><button class="btn" onclick="respondToFriendRequest(${friend.friendship_id}, 'decline')">Decline</button>`
+                )).join('')
+                : '<div class="empty">No incoming requests waiting on you.</div>';
+
+            document.getElementById('pendingSentList').innerHTML = outgoing.length
+                ? outgoing.map(friend => renderFriendCard(
+                    friend,
+                    'Invite sent',
+                    `<button class="btn danger" onclick="removeFriend(${friend.friendship_id})">Cancel invite</button>`
+                )).join('')
+                : '';
+
+            document.getElementById('friendsList').innerHTML = friends.length
+                ? friends.map(friend => renderFriendCard(
+                    friend,
+                    'Friend',
+                    `<button class="btn danger" onclick="removeFriend(${friend.friendship_id})">Remove friend</button>`
+                )).join('')
+                : '<div class="empty">No accepted friends yet.</div>';
+        }
+
+        async function loadFriends() {
+            const res = await fetch('/api/friends');
+            friendState = await res.json();
+            renderFriends();
+        }
+
+        async function submitFriendRequest(event) {
+            event.preventDefault();
+            const input = document.getElementById('friendEmail');
+            const email = input.value.trim();
+            if (!email) return false;
+
+            setFeedback('');
+            const form = new FormData();
+            form.append('email', email);
+
+            const res = await fetch('/api/friends/request', { method: 'POST', body: form });
+            const data = await res.json();
+            if (!res.ok) {
+                setFeedback(data.error || 'Could not send invite.', true);
+                return false;
+            }
+
+            input.value = '';
+            setFeedback(`Invitation sent to ${email}.`);
+            await loadFriends();
+            return false;
+        }
+
+        async function respondToFriendRequest(friendshipId, action) {
+            const res = await fetch(`/api/friends/${friendshipId}/${action}`, { method: 'POST' });
+            if (!res.ok) {
+                setFeedback('Could not update that friend request.', true);
+                return;
+            }
+            setFeedback(action === 'accept' ? 'Friend request accepted.' : 'Friend request declined.');
+            await loadFriends();
+        }
+
+        async function removeFriend(friendshipId) {
+            const res = await fetch(`/api/friends/${friendshipId}`, { method: 'DELETE' });
+            if (!res.ok) {
+                setFeedback('Could not remove that connection.', true);
+                return;
+            }
+            setFeedback('Connection removed.');
+            await loadFriends();
+        }
+
+        renderFriends();
+    </script>
+</body>
+</html>

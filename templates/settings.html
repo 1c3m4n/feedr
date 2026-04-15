@@ -6,54 +6,104 @@
     <title>feedr - Settings</title>
     <style>
         :root {
-            --bg: #f5f5f5;
-            --surface: #fff;
-            --border: #e0e0e0;
-            --text: #333;
-            --text-secondary: #666;
-            --accent: #2b5797;
-            --accent-hover: #1a3a6e;
+            --bg: #edf2eb;
+            --surface: #f8fbf5;
+            --surface-alt: #f1f6ef;
+            --border: #c8d3c5;
+            --border-strong: #aab9a7;
+            --text: #293129;
+            --text-secondary: #617062;
+            --accent: #6a8798;
+            --accent-hover: #567283;
+            --scrollbar-track: #e1e8de;
+            --scrollbar-thumb: #b3c0ae;
+            --scrollbar-thumb-hover: #95a592;
+            --shadow: 0 10px 30px rgba(45, 68, 49, 0.08);
         }
         [data-theme="dark"] {
-            --bg: #121212;
-            --surface: #1e1e1e;
-            --border: #333;
-            --text: #e0e0e0;
-            --text-secondary: #aaa;
-            --accent: #64b5f6;
-            --accent-hover: #90caf9;
+            --bg: #171c19;
+            --surface: #1f2622;
+            --surface-alt: #252d28;
+            --border: #38433b;
+            --border-strong: #516055;
+            --text: #e5ede2;
+            --text-secondary: #a9b6aa;
+            --accent: #8daabd;
+            --accent-hover: #a4bfd0;
+            --scrollbar-track: #242c27;
+            --scrollbar-thumb: #55665b;
+            --scrollbar-thumb-hover: #6b7f71;
+            --shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--bg);
             color: var(--text);
+            min-height: 100vh;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar {
+            width: 11px;
+            height: 11px;
+        }
+        *::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 999px;
+            border: 2px solid var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
         }
         .header {
-            background: var(--surface);
+            background: linear-gradient(to bottom, var(--surface), var(--surface-alt));
             border-bottom: 1px solid var(--border);
-            padding: 12px 24px;
+            padding: 14px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        .header h1 { font-size: 18px; }
-        .header a { color: var(--text-secondary); text-decoration: none; font-size: 13px; }
+        .header h1 {
+            font-size: 30px;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-weight: 600;
+        }
+        .header a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            padding: 7px 12px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.45);
+        }
         .container {
-            max-width: 720px;
-            margin: 32px auto;
+            max-width: 760px;
+            margin: 42px auto;
             padding: 0 24px;
         }
         .card {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 24px;
+            border-radius: 20px;
+            padding: 28px;
             margin-bottom: 24px;
+            box-shadow: var(--shadow);
         }
         .card h2 {
-            font-size: 16px;
-            margin-bottom: 16px;
+            font-size: 27px;
+            margin-bottom: 8px;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-weight: 600;
+        }
+        .section-copy {
+            margin-bottom: 18px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
         }
         .form-group {
             margin-bottom: 16px;
@@ -66,36 +116,75 @@
         }
         .form-group input, .form-group select {
             width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
+            padding: 12px 14px;
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
             font-size: 14px;
-            background: var(--bg);
+            background: var(--surface-alt);
             color: var(--text);
         }
         .btn {
             display: inline-block;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
+            padding: 11px 18px;
+            border: 1px solid var(--border-strong);
+            border-radius: 999px;
             font-size: 14px;
             cursor: pointer;
             text-decoration: none;
+            font-weight: 600;
         }
-        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
         .btn-danger { background: #d32f2f; color: #fff; }
-        .btn-secondary { background: var(--border); color: var(--text); }
-        .file-input { margin-bottom: 12px; }
+        .btn-secondary { background: var(--surface-alt); color: var(--text); }
+        .file-input {
+            margin-bottom: 12px;
+            color: var(--text-secondary);
+        }
+        .split-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .rule {
+            border: 0;
+            border-top: 1px solid var(--border);
+            margin: 22px 0;
+        }
+
+        @media (max-width: 640px) {
+            .header {
+                padding: 12px 16px;
+            }
+            .header h1 {
+                font-size: 24px;
+            }
+            .container {
+                margin: 24px auto;
+                padding: 0 16px;
+            }
+            .card {
+                padding: 22px;
+                border-radius: 16px;
+            }
+            .card h2 {
+                font-size: 23px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Settings</h1>
-        <a href="/reader">← Back to reader</a>
+        <div class="split-row">
+            <a href="/reader/profile">Profile</a>
+            <a href="/reader">← Back to reader</a>
+        </div>
     </div>
     <div class="container">
         <div class="card">
             <h2>Appearance</h2>
+            <p class="section-copy">Keep the reader quiet and legible while you move between scanning and reading.</p>
             <div class="form-group">
                 <label>Theme</label>
                 <select id="themeSelect" onchange="changeTheme(this.value)">
@@ -107,12 +196,14 @@
 
         <div class="card">
             <h2>Import / Export</h2>
-            <p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px">Import an OPML file from another RSS reader.</p>
+            <p class="section-copy">Bring in your subscriptions from another reader, or export them for safekeeping.</p>
             <form id="importForm" onsubmit="return importOpml(event)">
-                <input type="file" name="file" accept=".opml,.xml" class="file-input" required>
-                <button type="submit" class="btn btn-primary">Import OPML</button>
+                <div class="split-row">
+                    <input type="file" name="file" accept=".opml,.xml" class="file-input" required>
+                    <button type="submit" class="btn btn-primary">Import OPML</button>
+                </div>
             </form>
-            <hr style="border:0;border-top:1px solid var(--border);margin:20px 0">
+            <hr class="rule">
             <a href="/api/opml/export" class="btn btn-secondary">Export OPML</a>
         </div>
     </div>

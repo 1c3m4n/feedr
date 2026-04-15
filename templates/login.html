@@ -6,18 +6,36 @@
     <title>feedr - Login</title>
     <style>
         :root {
-            --bg: #f5f5f5;
-            --surface: #fff;
-            --text: #333;
-            --text-secondary: #666;
-            --border: #dadce0;
+            --bg: #eef3ec;
+            --surface: #f9fcf7;
+            --surface-alt: #f1f6ef;
+            --text: #293129;
+            --text-secondary: #617062;
+            --border: #c8d3c5;
+            --accent: #6a8798;
+            --shadow: 0 14px 34px rgba(45, 68, 49, 0.1);
+            --danger-bg: #f7e8e5;
+            --danger-border: #e2bbb5;
+            --danger-text: #8a3128;
+            --scrollbar-track: #e1e8de;
+            --scrollbar-thumb: #b3c0ae;
+            --scrollbar-thumb-hover: #95a592;
         }
         [data-theme="dark"] {
-            --bg: #121212;
-            --surface: #1e1e1e;
-            --text: #e0e0e0;
-            --text-secondary: #aaa;
-            --border: #333;
+            --bg: #171c19;
+            --surface: #1f2622;
+            --surface-alt: #252d28;
+            --text: #e5ede2;
+            --text-secondary: #a9b6aa;
+            --border: #38433b;
+            --accent: #8daabd;
+            --shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
+            --danger-bg: #36211e;
+            --danger-border: #704842;
+            --danger-text: #f0c3bc;
+            --scrollbar-track: #242c27;
+            --scrollbar-thumb: #55665b;
+            --scrollbar-thumb-hover: #6b7f71;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -27,41 +45,127 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar {
+            width: 11px;
+            height: 11px;
+        }
+        *::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 999px;
+            border: 2px solid var(--scrollbar-track);
+        }
+        *::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
         }
         .login-box {
             background: var(--surface);
             padding: 48px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
             text-align: center;
-            max-width: 360px;
+            max-width: 400px;
             width: 90%;
         }
         h1 { font-size: 32px; margin-bottom: 8px; color: var(--text); }
-        p { color: var(--text-secondary); margin-bottom: 32px; }
+        .tagline { color: var(--text-secondary); margin-bottom: 24px; }
         .google-btn {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 12px;
             background: var(--surface);
             border: 1px solid var(--border);
             color: var(--text);
             padding: 12px 24px;
-            border-radius: 4px;
+            border-radius: 999px;
             font-size: 14px;
             font-weight: 500;
             text-decoration: none;
             transition: box-shadow 0.2s;
+            width: 100%;
         }
         .google-btn:hover {
-            box-shadow: 0 1px 2px rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+            box-shadow: 0 6px 16px rgba(45, 68, 49, 0.12);
+        }
+        .divider {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .divider::before, .divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .local-form {
+            text-align: left;
+        }
+        .field {
+            margin-bottom: 12px;
+        }
+        .field label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .field input {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-alt);
+            color: var(--text);
+            font-size: 14px;
+        }
+        .local-btn {
+            width: 100%;
+            border: none;
+            border-radius: 999px;
+            background: var(--accent);
+            color: white;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .helper {
+            margin-top: 10px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .error {
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border: 1px solid var(--danger-border);
+            background: var(--danger-bg);
+            color: var(--danger-text);
+            border-radius: 6px;
+            font-size: 13px;
+            text-align: left;
         }
     </style>
 </head>
 <body>
     <div class="login-box">
         <h1>feedr</h1>
-        <p>A modern recreation of Google Reader</p>
+        <p class="tagline">A modern recreation of Google Reader</p>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
         <a href="/auth/google" class="google-btn">
             <svg width="18" height="18" viewBox="0 0 48 48">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -71,6 +175,21 @@
             </svg>
             Sign in with Google
         </a>
+        {% if local_auth_enabled %}
+        <div class="divider">or</div>
+        <form method="post" action="/auth/local" class="local-form">
+            <div class="field">
+                <label for="username">Username or email</label>
+                <input id="username" name="username" type="text" value="{{ last_username or '' }}" autocomplete="username" required>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="local-btn">Continue with local account</button>
+            <p class="helper">Local accounts are enabled on localhost for testing. The first successful login creates the account automatically.</p>
+        </form>
+        {% endif %}
     </div>
     <script>
         const theme = localStorage.getItem('theme') || 'light';
