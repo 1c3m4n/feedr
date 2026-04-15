@@ -29,8 +29,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
+from urllib.parse import urlparse
 
 load_dotenv()
+
+
+def normalize_feed_url(url: str) -> str:
+    url = url.strip()
+    if url.startswith("feed://"):
+        url = "http://" + url[7:]
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower() if parsed.scheme else "http"
+    netloc = parsed.netloc.lower().strip()
+    path = parsed.path.rstrip("/") or "/"
+    if not netloc:
+        return url
+    return f"{scheme}://{netloc}{path}"
+
 
 app = FastAPI(title="feedr", description="A modern recreation of Google Reader")
 
@@ -362,7 +377,7 @@ async def logout(request: Request):
     return RedirectResponse(url="/login")
 
 
-# Feed Management
+# Feed Management (v2 — subscriptions over shared sources)
 
 
 @app.get("/api/feeds")
@@ -371,32 +386,38 @@ async def api_feeds(request: Request):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    feeds = db.query(Feed).filter(Feed.user_id == user.id).all()
     folders = db.query(Folder).filter(Folder.user_id == user.id).all()
     folder_map = {f.id: f.name for f in folders}
+    subscriptions = (
+        db.query(FeedSubscription).filter(FeedSubscription.user_id == user.id).all()
+    )
     result = []
-    for f in feeds:
+    for sub in subscriptions:
+        source = sub.source
         unread = (
-            db.query(func.count(ReadState.id))
+            db.query(func.count(SharedArticle.id))
             .filter(
-                ReadState.user_id == user.id,
-                ReadState.article_id.in_(
-                    db.query(Article.id).filter(Article.feed_id == f.id)
+                SharedArticle.feed_source_id == source.id,
+                ~SharedArticle.id.in_(
+                    db.query(UserArticleState.article_id).filter(
+                        UserArticleState.user_id == user.id,
+                        UserArticleState.is_read == True,
+                    )
                 ),
-                ReadState.is_read == False,
             )
             .scalar()
             or 0
         )
         result.append(
             {
-                "id": f.id,
-                "title": f.title or f.url,
-                "url": f.url,
-                "folder_id": f.folder_id,
-                "folder_name": folder_map.get(f.folder_id),
+                "id": sub.id,
+                "title": sub.custom_title or source.title or source.display_url,
+                "url": source.normalized_url,
+                "folder_id": sub.folder_id,
+                "folder_name": folder_map.get(sub.folder_id),
                 "unread_count": unread,
-                "site_url": f.site_url,
+                "site_url": source.site_url,
+                "feed_source_id": source.id,
             }
         )
     return {"feeds": result, "folders": [{"id": f.id, "name": f.name} for f in folders]}
@@ -410,25 +431,67 @@ async def api_add_feed(
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    parsed = feedparser.parse(url)
-    title = parsed.feed.get("title", url)
-    description = parsed.feed.get("description", "")
-    site_url = parsed.feed.get("link", url)
-    feed = Feed(
-        user_id=user.id,
-        url=url,
-        folder_id=folder_id,
-        title=title,
-        description=description,
-        site_url=site_url,
+
+    norm = normalize_feed_url(url)
+    if not norm or not norm.startswith(("http://", "https://")):
+        return JSONResponse({"error": "Invalid URL"}, status_code=400)
+
+    # Check for existing subscription
+    existing_sub = (
+        db.query(FeedSubscription)
+        .join(FeedSource)
+        .filter(
+            FeedSubscription.user_id == user.id,
+            FeedSource.normalized_url == norm,
+        )
+        .first()
     )
-    db.add(feed)
+    if existing_sub:
+        return JSONResponse(
+            {"error": "Already subscribed", "subscription_id": existing_sub.id},
+            status_code=409,
+        )
+
+    # Probe the feed for metadata
+    parsed = feedparser.parse(
+        norm, agent="feedr/1.0 (+https://github.com/1c3m4n/feedr)"
+    )
+    title = parsed.feed.get("title", norm)
+    description = parsed.feed.get("description", "")
+    site_url = parsed.feed.get("link", norm)
+
+    # Resolve or create source
+    source = db.query(FeedSource).filter(FeedSource.normalized_url == norm).first()
+    if not source:
+        source = FeedSource(
+            normalized_url=norm,
+            display_url=url,
+            site_url=site_url,
+            title=title,
+            description=description,
+        )
+        db.add(source)
+        db.commit()
+        db.refresh(source)
+
+    sub = FeedSubscription(
+        user_id=user.id,
+        feed_source_id=source.id,
+        folder_id=folder_id,
+        custom_title=title if title != norm else None,
+    )
+    db.add(sub)
     db.commit()
-    db.refresh(feed)
-    fetch_result = fetch_feed_articles(db, feed)
+    db.refresh(sub)
+
+    fetch_result = fetch_source_articles(db, source)
     return {
         "success": True,
-        "feed": {"id": feed.id, "title": feed.title},
+        "subscription": {
+            "id": sub.id,
+            "title": sub.custom_title or source.title or source.display_url,
+        },
+        "source": {"id": source.id, "normalized_url": source.normalized_url},
         "fetch": fetch_result,
     }
 
@@ -439,9 +502,13 @@ async def api_delete_feed(request: Request, feed_id: int):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    feed = db.query(Feed).filter(Feed.id == feed_id, Feed.user_id == user.id).first()
-    if feed:
-        db.delete(feed)
+    sub = (
+        db.query(FeedSubscription)
+        .filter(FeedSubscription.id == feed_id, FeedSubscription.user_id == user.id)
+        .first()
+    )
+    if sub:
+        db.delete(sub)
         db.commit()
     return {"success": True}
 
