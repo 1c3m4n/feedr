@@ -47,6 +47,7 @@ docker run -d -p 80:80 \
   -e GOOGLE_CLIENT_SECRET=your-secret \
   -e SECRET_KEY=your-secret-key \
   -e APP_URL=https://your-domain.com \
+  -e DATABASE_URL=sqlite:////storage/feedr.db \
   -v feedr-data:/storage \
   ghcr.io/1c3m4n/feedr:latest
 ```

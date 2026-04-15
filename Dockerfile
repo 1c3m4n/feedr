@@ -20,7 +20,7 @@ COPY . .
 RUN mkdir -p /storage && chmod 777 /storage
 
 ENV PYTHONUNBUFFERED=1
-ENV DATABASE_URL=sqlite:///storage/feedr.db
+ENV DATABASE_URL=sqlite:////storage/feedr.db
 ENV APP_URL=http://localhost
 
 EXPOSE 80

@@ -54,7 +54,7 @@ oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 
-DB_PATH = os.getenv("DATABASE_URL", "sqlite:///storage/feedr.db").replace(
+DB_PATH = os.getenv("DATABASE_URL", "sqlite:////storage/feedr.db").replace(
     "sqlite:///", ""
 )
 os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
