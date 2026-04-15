@@ -10,7 +10,7 @@ import feedparser
 from authlib.integrations.starlette_client import OAuth
 from dateutil import parser as date_parser
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -330,8 +330,7 @@ async def up():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    db = next(get_db())
+async def index(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login")
@@ -339,8 +338,7 @@ async def index(request: Request):
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    db = next(get_db())
+async def login_page(request: Request, db: Session = Depends(get_db)):
     if get_current_user(request, db):
         return RedirectResponse(url="/")
     return templates.TemplateResponse(request, "login.html")
@@ -381,8 +379,7 @@ async def logout(request: Request):
 
 
 @app.get("/api/feeds")
-async def api_feeds(request: Request):
-    db = next(get_db())
+async def api_feeds(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -425,9 +422,11 @@ async def api_feeds(request: Request):
 
 @app.post("/api/feeds")
 async def api_add_feed(
-    request: Request, url: str = Form(...), folder_id: Optional[int] = Form(None)
+    request: Request,
+    url: str = Form(...),
+    folder_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
 ):
-    db = next(get_db())
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -497,8 +496,9 @@ async def api_add_feed(
 
 
 @app.delete("/api/feeds/{feed_id}")
-async def api_delete_feed(request: Request, feed_id: int):
-    db = next(get_db())
+async def api_delete_feed(
+    request: Request, feed_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -517,8 +517,9 @@ async def api_delete_feed(request: Request, feed_id: int):
 
 
 @app.post("/api/folders")
-async def api_create_folder(request: Request, name: str = Form(...)):
-    db = next(get_db())
+async def api_create_folder(
+    request: Request, name: str = Form(...), db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -530,8 +531,9 @@ async def api_create_folder(request: Request, name: str = Form(...)):
 
 
 @app.delete("/api/folders/{folder_id}")
-async def api_delete_folder(request: Request, folder_id: int):
-    db = next(get_db())
+async def api_delete_folder(
+    request: Request, folder_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -555,8 +557,8 @@ async def api_articles(
     feed_id: Optional[int] = None,
     search: Optional[str] = None,
     unread_only: bool = False,
+    db: Session = Depends(get_db),
 ):
-    db = next(get_db())
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -624,8 +626,9 @@ async def api_articles(
 
 
 @app.post("/api/articles/{article_id}/read")
-async def api_mark_read(request: Request, article_id: int):
-    db = next(get_db())
+async def api_mark_read(
+    request: Request, article_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -653,8 +656,9 @@ async def api_mark_read(request: Request, article_id: int):
 
 
 @app.post("/api/articles/{article_id}/unread")
-async def api_mark_unread(request: Request, article_id: int):
-    db = next(get_db())
+async def api_mark_unread(
+    request: Request, article_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -677,8 +681,9 @@ async def api_mark_unread(request: Request, article_id: int):
 
 
 @app.post("/api/feeds/{feed_id}/mark-all-read")
-async def api_mark_all_read(request: Request, feed_id: int):
-    db = next(get_db())
+async def api_mark_all_read(
+    request: Request, feed_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -727,8 +732,8 @@ async def api_shared_articles(
     friend_id: Optional[int] = None,
     search: Optional[str] = None,
     unread_only: bool = False,
+    db: Session = Depends(get_db),
 ):
-    db = next(get_db())
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -806,9 +811,11 @@ async def api_shared_articles(
 
 @app.post("/api/articles/{article_id}/share")
 async def api_share_article(
-    request: Request, article_id: int, comment: Optional[str] = Form(None)
+    request: Request,
+    article_id: int,
+    comment: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
 ):
-    db = next(get_db())
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -835,8 +842,9 @@ async def api_share_article(
 
 
 @app.delete("/api/articles/{article_id}/share")
-async def api_unshare_article(request: Request, article_id: int):
-    db = next(get_db())
+async def api_unshare_article(
+    request: Request, article_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -856,8 +864,7 @@ async def api_unshare_article(request: Request, article_id: int):
 
 
 @app.get("/api/friends")
-async def api_friends(request: Request):
-    db = next(get_db())
+async def api_friends(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -909,8 +916,9 @@ async def api_friends(request: Request):
 
 
 @app.post("/api/friends/request")
-async def api_request_friend(request: Request, email: str = Form(...)):
-    db = next(get_db())
+async def api_request_friend(
+    request: Request, email: str = Form(...), db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -960,8 +968,9 @@ async def api_request_friend(request: Request, email: str = Form(...)):
 
 
 @app.post("/api/friends/{friendship_id}/accept")
-async def api_accept_friend(request: Request, friendship_id: int):
-    db = next(get_db())
+async def api_accept_friend(
+    request: Request, friendship_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -979,8 +988,9 @@ async def api_accept_friend(request: Request, friendship_id: int):
 
 
 @app.post("/api/friends/{friendship_id}/decline")
-async def api_decline_friend(request: Request, friendship_id: int):
-    db = next(get_db())
+async def api_decline_friend(
+    request: Request, friendship_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -995,8 +1005,9 @@ async def api_decline_friend(request: Request, friendship_id: int):
 
 
 @app.delete("/api/friends/{friendship_id}")
-async def api_remove_friend(request: Request, friendship_id: int):
-    db = next(get_db())
+async def api_remove_friend(
+    request: Request, friendship_id: int, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -1019,8 +1030,9 @@ async def api_remove_friend(request: Request, friendship_id: int):
 
 
 @app.post("/api/opml/import")
-async def api_opml_import(request: Request, file: UploadFile):
-    db = next(get_db())
+async def api_opml_import(
+    request: Request, file: UploadFile, db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -1128,8 +1140,7 @@ async def api_opml_import(request: Request, file: UploadFile):
 
 
 @app.get("/api/opml/export")
-async def api_opml_export(request: Request):
-    db = next(get_db())
+async def api_opml_export(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -1348,8 +1359,7 @@ fetcher_thread.start()
 
 
 @app.get("/reader", response_class=HTMLResponse)
-async def reader(request: Request):
-    db = next(get_db())
+async def reader(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login")
@@ -1357,8 +1367,7 @@ async def reader(request: Request):
 
 
 @app.get("/reader/settings", response_class=HTMLResponse)
-async def reader_settings(request: Request):
-    db = next(get_db())
+async def reader_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login")
