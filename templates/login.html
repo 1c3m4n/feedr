@@ -5,17 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>feedr - Login</title>
     <style>
+        :root {
+            --bg: #f5f5f5;
+            --surface: #fff;
+            --text: #333;
+            --text-secondary: #666;
+            --border: #dadce0;
+        }
+        [data-theme="dark"] {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --text: #e0e0e0;
+            --text-secondary: #aaa;
+            --border: #333;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
+            background: var(--bg);
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
         }
         .login-box {
-            background: white;
+            background: var(--surface);
             padding: 48px;
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -23,15 +37,15 @@
             max-width: 360px;
             width: 90%;
         }
-        h1 { font-size: 32px; margin-bottom: 8px; color: #333; }
-        p { color: #666; margin-bottom: 32px; }
+        h1 { font-size: 32px; margin-bottom: 8px; color: var(--text); }
+        p { color: var(--text-secondary); margin-bottom: 32px; }
         .google-btn {
             display: inline-flex;
             align-items: center;
             gap: 12px;
-            background: #fff;
-            border: 1px solid #dadce0;
-            color: #3c4043;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
             padding: 12px 24px;
             border-radius: 4px;
             font-size: 14px;
@@ -58,5 +72,9 @@
             Sign in with Google
         </a>
     </div>
+    <script>
+        const theme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+    </script>
 </body>
 </html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>feedr - Settings</title>
+    <style>
+        :root {
+            --bg: #f5f5f5;
+            --surface: #fff;
+            --border: #e0e0e0;
+            --text: #333;
+            --text-secondary: #666;
+            --accent: #2b5797;
+            --accent-hover: #1a3a6e;
+        }
+        [data-theme="dark"] {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --border: #333;
+            --text: #e0e0e0;
+            --text-secondary: #aaa;
+            --accent: #64b5f6;
+            --accent-hover: #90caf9;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 18px; }
+        .header a { color: var(--text-secondary); text-decoration: none; font-size: 13px; }
+        .container {
+            max-width: 720px;
+            margin: 32px auto;
+            padding: 0 24px;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .card h2 {
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-danger { background: #d32f2f; color: #fff; }
+        .btn-secondary { background: var(--border); color: var(--text); }
+        .file-input { margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Settings</h1>
+        <a href="/reader">← Back to reader</a>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h2>Appearance</h2>
+            <div class="form-group">
+                <label>Theme</label>
+                <select id="themeSelect" onchange="changeTheme(this.value)">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Import / Export</h2>
+            <p style="margin-bottom:12px;color:var(--text-secondary);font-size:13px">Import an OPML file from another RSS reader.</p>
+            <form id="importForm" onsubmit="return importOpml(event)">
+                <input type="file" name="file" accept=".opml,.xml" class="file-input" required>
+                <button type="submit" class="btn btn-primary">Import OPML</button>
+            </form>
+            <hr style="border:0;border-top:1px solid var(--border);margin:20px 0">
+            <a href="/api/opml/export" class="btn btn-secondary">Export OPML</a>
+        </div>
+    </div>
+
+    <script>
+        function initTheme() {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            document.getElementById('themeSelect').value = theme;
+        }
+        function changeTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+        }
+        initTheme();
+
+        async function importOpml(e) {
+            e.preventDefault();
+            const form = e.target;
+            const res = await fetch('/api/opml/import', {
+                method: 'POST',
+                body: new FormData(form)
+            });
+            const data = await res.json();
+            alert(`Imported ${data.imported} feeds.`);
+            form.reset();
+            return false;
+        }
+    </script>
+</body>
+</html>

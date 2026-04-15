@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>feedr - Reader</title>
+    <style>
+        :root {
+            --bg: #f5f5f5;
+            --surface: #fff;
+            --border: #e0e0e0;
+            --text: #333;
+            --text-secondary: #666;
+            --accent: #2b5797;
+            --accent-hover: #1a3a6e;
+            --unread-bg: #e3f2fd;
+            --selected-bg: #d1e8ff;
+            --hover-bg: #f0f0f0;
+        }
+        [data-theme="dark"] {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --border: #333;
+            --text: #e0e0e0;
+            --text-secondary: #aaa;
+            --accent: #64b5f6;
+            --accent-hover: #90caf9;
+            --unread-bg: #1a3a5c;
+            --selected-bg: #2a4a6c;
+            --hover-bg: #2a2a2a;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+        }
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header h1 { font-size: 18px; color: var(--text); }
+        .search-box {
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            width: 240px;
+            font-size: 14px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-right a, .header-right button {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .header-right a:hover, .header-right button:hover { color: var(--text); }
+        .user img {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+        }
+        .main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 260px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-header button {
+            font-size: 11px;
+            padding: 4px 8px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .feed-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+        .feed-item {
+            padding: 6px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text);
+        }
+        .feed-item:hover { background: var(--hover-bg); }
+        .feed-item.active { background: var(--selected-bg); font-weight: 500; }
+        .feed-item.all-feeds { font-weight: 600; margin-bottom: 4px; }
+        .feed-item.unread-only-btn { color: var(--accent); font-weight: 500; }
+        .folder-name {
+            padding: 8px 16px 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 0.3px;
+        }
+        .unread-badge {
+            background: var(--accent);
+            color: #fff;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            min-width: 18px;
+            text-align: center;
+        }
+        .center-pane {
+            width: 360px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .center-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .center-header button {
+            font-size: 11px;
+            padding: 4px 8px;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            cursor: pointer;
+            color: var(--text);
+        }
+        .article-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .article-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .article-item:hover { background: var(--hover-bg); }
+        .article-item.selected { background: var(--selected-bg); }
+        .article-item.unread { background: var(--unread-bg); }
+        .article-item.unread.selected { background: var(--selected-bg); }
+        .article-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+            line-height: 1.3;
+        }
+        .article-item.is-read .article-title { font-weight: 400; color: var(--text-secondary); }
+        .article-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .content-pane {
+            flex: 1;
+            background: var(--surface);
+            overflow-y: auto;
+            padding: 24px 32px;
+        }
+        .content-header {
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .content-title {
+            font-size: 22px;
+            font-weight: 600;
+            line-height: 1.3;
+            margin-bottom: 8px;
+        }
+        .content-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .content-body {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text);
+        }
+        .content-body img { max-width: 100%; height: auto; }
+        .content-body a { color: var(--accent); }
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text);
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface);
+            border-radius: 8px;
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .modal h3 { margin-bottom: 16px; font-size: 16px; }
+        .modal input, .modal select {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .modal-buttons button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .modal-buttons .secondary { background: var(--hover-bg); color: var(--text); }
+        .modal-buttons .primary { background: var(--accent); color: #fff; }
+
+        @media (max-width: 900px) {
+            .sidebar {
+                position: absolute;
+                left: -260px;
+                top: 49px;
+                bottom: 0;
+                z-index: 100;
+                transition: left 0.2s;
+            }
+            .sidebar.open { left: 0; }
+            .center-pane { width: 100%; border-right: none; }
+            .content-pane {
+                position: absolute;
+                left: 0; top: 49px; right: 0; bottom: 0;
+                z-index: 50;
+                display: none;
+            }
+            .content-pane.open { display: block; }
+            .mobile-menu-btn { display: block; }
+            .search-box { width: 140px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+                <h1>feedr</h1>
+                <input type="text" class="search-box" id="searchBox" placeholder="Search articles..." onkeyup="handleSearch(event)">
+            </div>
+            <div class="header-right">
+                <button onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+                <a href="/reader/settings">Settings</a>
+                {% if user.picture %}<img src="{{ user.picture }}" alt="{{ user.name }}">{% endif %}
+                <a href="/logout">Logout</a>
+            </div>
+        </div>
+        <div class="main">
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <span>Subscriptions</span>
+                    <button onclick="openAddFeedModal()">+ Feed</button>
+                </div>
+                <div class="feed-list" id="feedList">
+                    <div class="feed-item all-feeds active" onclick="selectFeed(null)">All items</div>
+                    <div class="feed-item unread-only-btn" onclick="toggleUnreadOnly()" id="unreadOnlyBtn">Unread only</div>
+                    <div id="feedTree"></div>
+                </div>
+            </div>
+            <div class="center-pane" id="centerPane">
+                <div class="center-header">
+                    <span id="feedTitle">All items</span>
+                    <button onclick="markAllRead()" id="markAllReadBtn" style="display:none">Mark all read</button>
+                </div>
+                <div class="article-list" id="articleList">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+            <div class="content-pane" id="contentPane">
+                <div class="empty-state" id="contentEmpty">Select an article to read</div>
+                <div id="contentBody" style="display:none">
+                    <div class="content-header">
+                        <div class="content-title" id="contentTitle"></div>
+                        <div class="content-meta">
+                            <span id="contentFeed"></span> • <span id="contentDate"></span>
+                            • <a href="#" id="contentLink" target="_blank">Open original</a>
+                        </div>
+                    </div>
+                    <div class="content-body" id="contentHtml"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Feed Modal -->
+    <div class="modal-overlay" id="addFeedModal">
+        <div class="modal">
+            <h3>Add Feed</h3>
+            <input type="text" id="feedUrl" placeholder="https://example.com/feed.xml">
+            <select id="feedFolder">
+                <option value="">No folder</option>
+            </select>
+            <div class="modal-buttons">
+                <button class="secondary" onclick="closeModal('addFeedModal')">Cancel</button>
+                <button class="primary" onclick="submitAddFeed()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Folder Modal -->
+    <div class="modal-overlay" id="addFolderModal">
+        <div class="modal">
+            <h3>Add Folder</h3>
+            <input type="text" id="folderName" placeholder="Folder name">
+            <div class="modal-buttons">
+                <button class="secondary" onclick="closeModal('addFolderModal')">Cancel</button>
+                <button class="primary" onclick="submitAddFolder()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let feeds = [];
+        let folders = [];
+        let articles = [];
+        let selectedFeedId = null;
+        let selectedArticleIndex = -1;
+        let unreadOnly = false;
+        let searchQuery = '';
+
+        // Theme
+        function initTheme() {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        }
+        initTheme();
+
+        async function loadFeeds() {
+            const res = await fetch('/api/feeds');
+            const data = await res.json();
+            feeds = data.feeds;
+            folders = data.folders;
+            renderFeeds();
+            populateFolderSelect();
+        }
+
+        function populateFolderSelect() {
+            const sel = document.getElementById('feedFolder');
+            sel.innerHTML = '<option value="">No folder</option>';
+            folders.forEach(f => {
+                sel.innerHTML += `<option value="${f.id}">${f.name}</option>`;
+            });
+        }
+
+        function renderFeeds() {
+            const tree = document.getElementById('feedTree');
+            tree.innerHTML = '';
+
+            // Folders
+            folders.forEach(folder => {
+                const folderFeeds = feeds.filter(f => f.folder_id === folder.id);
+                const folderUnread = folderFeeds.reduce((a, f) => a + f.unread_count, 0);
+                const folderEl = document.createElement('div');
+                folderEl.innerHTML = `<div class="folder-name">${folder.name} ${folderUnread ? `<span class="unread-badge">${folderUnread}</span>` : ''}</div>`;
+                folderFeeds.forEach(f => {
+                    folderEl.innerHTML += renderFeedItem(f);
+                });
+                tree.appendChild(folderEl);
+            });
+
+            // No folder
+            const noFolderFeeds = feeds.filter(f => !f.folder_id);
+            if (noFolderFeeds.length) {
+                noFolderFeeds.forEach(f => {
+                    tree.innerHTML += renderFeedItem(f);
+                });
+            }
+        }
+
+        function renderFeedItem(f) {
+            const active = f.id === selectedFeedId ? 'active' : '';
+            return `<div class="feed-item ${active}" onclick="selectFeed(${f.id})" data-feed-id="${f.id}">
+                <span>${f.title}</span>
+                ${f.unread_count ? `<span class="unread-badge">${f.unread_count}</span>` : ''}
+            </div>`;
+        }
+
+        async function loadArticles() {
+            let url = '/api/articles?';
+            if (selectedFeedId) url += `feed_id=${selectedFeedId}&`;
+            if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
+            if (unreadOnly) url += 'unread_only=true&';
+            const res = await fetch(url);
+            const data = await res.json();
+            articles = data.articles;
+            renderArticles();
+        }
+
+        function renderArticles() {
+            const list = document.getElementById('articleList');
+            if (!articles.length) {
+                list.innerHTML = '<div class="empty-state">No articles found</div>';
+                return;
+            }
+            list.innerHTML = articles.map((a, i) => {
+                const date = a.published_at ? new Date(a.published_at).toLocaleString() : '';
+                const unreadClass = !a.is_read ? 'unread' : 'is-read';
+                const selectedClass = i === selectedArticleIndex ? 'selected' : '';
+                return `<div class="article-item ${unreadClass} ${selectedClass}" data-idx="${i}" onclick="selectArticle(${i})">
+                    <div class="article-title">${a.title}</div>
+                    <div class="article-meta">${a.feed_title} • ${date}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function selectFeed(id) {
+            selectedFeedId = id;
+            selectedArticleIndex = -1;
+            unreadOnly = false;
+            document.getElementById('unreadOnlyBtn').classList.remove('active');
+            document.querySelectorAll('.feed-item').forEach(el => el.classList.remove('active'));
+            if (id === null) {
+                document.querySelector('.feed-item.all-feeds').classList.add('active');
+                document.getElementById('feedTitle').textContent = 'All items';
+                document.getElementById('markAllReadBtn').style.display = 'none';
+            } else {
+                const el = document.querySelector(`.feed-item[data-feed-id="${id}"]`);
+                if (el) el.classList.add('active');
+                const feed = feeds.find(f => f.id === id);
+                document.getElementById('feedTitle').textContent = feed ? feed.title : 'Feed';
+                document.getElementById('markAllReadBtn').style.display = 'inline-block';
+            }
+            closeContentPane();
+            loadArticles();
+        }
+
+        function toggleUnreadOnly() {
+            unreadOnly = !unreadOnly;
+            document.getElementById('unreadOnlyBtn').classList.toggle('active', unreadOnly);
+            loadArticles();
+        }
+
+        async function selectArticle(idx) {
+            selectedArticleIndex = idx;
+            const a = articles[idx];
+            if (!a) return;
+
+            renderArticles();
+            const contentPane = document.getElementById('contentPane');
+            document.getElementById('contentEmpty').style.display = 'none';
+            document.getElementById('contentBody').style.display = 'block';
+            document.getElementById('contentTitle').textContent = a.title;
+            document.getElementById('contentFeed').textContent = a.feed_title;
+            document.getElementById('contentDate').textContent = a.published_at ? new Date(a.published_at).toLocaleString() : '';
+            document.getElementById('contentLink').href = a.link;
+            document.getElementById('contentHtml').innerHTML = a.content || a.summary || '<p>No content</p>';
+
+            if (window.innerWidth <= 900) {
+                contentPane.classList.add('open');
+            }
+
+            if (!a.is_read) {
+                await fetch(`/api/articles/${a.id}/read`, { method: 'POST' });
+                a.is_read = true;
+                renderArticles();
+                loadFeeds(); // refresh unread counts
+            }
+        }
+
+        function closeContentPane() {
+            document.getElementById('contentPane').classList.remove('open');
+            document.getElementById('contentEmpty').style.display = 'block';
+            document.getElementById('contentBody').style.display = 'none';
+        }
+
+        function handleSearch(e) {
+            if (e.key === 'Enter') {
+                searchQuery = e.target.value.trim();
+                loadArticles();
+            }
+        }
+
+        async function markAllRead() {
+            if (!selectedFeedId) return;
+            await fetch(`/api/feeds/${selectedFeedId}/mark-all-read`, { method: 'POST' });
+            loadArticles();
+            loadFeeds();
+        }
+
+        // Modals
+        function openAddFeedModal() { document.getElementById('addFeedModal').classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        async function submitAddFeed() {
+            const url = document.getElementById('feedUrl').value.trim();
+            const folderId = document.getElementById('feedFolder').value;
+            if (!url) return;
+            const form = new FormData();
+            form.append('url', url);
+            if (folderId) form.append('folder_id', folderId);
+            await fetch('/api/feeds', { method: 'POST', body: form });
+            closeModal('addFeedModal');
+            document.getElementById('feedUrl').value = '';
+            loadFeeds();
+            loadArticles();
+        }
+        function openAddFolderModal() { document.getElementById('addFolderModal').classList.add('active'); }
+        async function submitAddFolder() {
+            const name = document.getElementById('folderName').value.trim();
+            if (!name) return;
+            const form = new FormData();
+            form.append('name', name);
+            await fetch('/api/folders', { method: 'POST', body: form });
+            closeModal('addFolderModal');
+            document.getElementById('folderName').value = '';
+            loadFeeds();
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.key === 'j' || e.key === 'n') {
+                e.preventDefault();
+                if (selectedArticleIndex < articles.length - 1) selectArticle(selectedArticleIndex + 1);
+            } else if (e.key === 'k' || e.key === 'p') {
+                e.preventDefault();
+                if (selectedArticleIndex > 0) selectArticle(selectedArticleIndex - 1);
+            } else if (e.key === 'm') {
+                e.preventDefault();
+                const a = articles[selectedArticleIndex];
+                if (a) {
+                    const endpoint = a.is_read ? 'unread' : 'read';
+                    fetch(`/api/articles/${a.id}/${endpoint}`, { method: 'POST' });
+                    a.is_read = !a.is_read;
+                    renderArticles();
+                    loadFeeds();
+                }
+            } else if (e.key === 'v') {
+                e.preventDefault();
+                const a = articles[selectedArticleIndex];
+                if (a && a.link) window.open(a.link, '_blank');
+            } else if (e.key === 'Escape') {
+                closeContentPane();
+            }
+        });
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        // Init
+        loadFeeds();
+        loadArticles();
+        // Add folder button in header for convenience
+        const sidebarHeader = document.querySelector('.sidebar-header');
+        const folderBtn = document.createElement('button');
+        folderBtn.textContent = '+ Folder';
+        folderBtn.style.fontSize = '11px';
+        folderBtn.style.padding = '4px 8px';
+        folderBtn.style.background = 'var(--accent)';
+        folderBtn.style.color = '#fff';
+        folderBtn.style.border = 'none';
+        folderBtn.style.borderRadius = '3px';
+        folderBtn.style.cursor = 'pointer';
+        folderBtn.style.marginLeft = '8px';
+        folderBtn.onclick = openAddFolderModal;
+        sidebarHeader.appendChild(folderBtn);
+    </script>
+</body>
+</html>
