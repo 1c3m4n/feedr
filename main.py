@@ -1,7 +1,9 @@
 import base64
 import hashlib
+import ipaddress
 import os
 import secrets
+import socket
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -48,6 +50,38 @@ def normalize_feed_url(url: str) -> str:
     if not netloc:
         return url
     return f"{scheme}://{netloc}{path}"
+
+
+def is_public_feed_url(url: str) -> bool:
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if not parsed.hostname or parsed.username or parsed.password:
+        return False
+
+    hostname = parsed.hostname.strip().lower()
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return False
+
+    try:
+        addresses = {
+            item[4][0]
+            for item in socket.getaddrinfo(
+                hostname, parsed.port or None, proto=socket.IPPROTO_TCP
+            )
+        }
+    except socket.gaierror:
+        return False
+
+    if not addresses:
+        return False
+
+    for address_text in addresses:
+        ip = ipaddress.ip_address(address_text)
+        if not ip.is_global:
+            return False
+
+    return True
 
 
 app = FastAPI(title="feedr", description="A modern recreation of Google Reader")
@@ -632,6 +666,8 @@ async def api_add_feed(
     norm = normalize_feed_url(url)
     if not norm or not norm.startswith(("http://", "https://")):
         return JSONResponse({"error": "Invalid URL"}, status_code=400)
+    if not is_public_feed_url(norm):
+        return JSONResponse({"error": "Feed URL is not allowed"}, status_code=400)
 
     # Check for existing subscription
     existing_sub = (
@@ -1231,6 +1267,9 @@ async def api_opml_import(
                 folder_name = outline.get("text") or outline.get("title")
                 if url:
                     norm = normalize_feed_url(url)
+                    if not is_public_feed_url(norm):
+                        skipped += 1
+                        continue
                     existing_sub = (
                         db.query(FeedSubscription)
                         .join(FeedSource)
@@ -1274,6 +1313,9 @@ async def api_opml_import(
             title = outline.get("text") or outline.get("title") or url
             if url:
                 norm = normalize_feed_url(url)
+                if not is_public_feed_url(norm):
+                    skipped += 1
+                    continue
                 existing_sub = (
                     db.query(FeedSubscription)
                     .join(FeedSource)
@@ -1390,6 +1432,13 @@ def _derive_canonical_key(entry: dict) -> str:
 def fetch_source_articles(db: Session, source: FeedSource) -> dict:
     if source.is_fetching:
         return {"success": False, "error": "Already fetching", "fetched": 0}
+    if not is_public_feed_url(source.normalized_url):
+        source.fetch_status = "error"
+        source.fetch_error = "Feed URL is not allowed"
+        source.last_fetched_at = datetime.utcnow()
+        source.is_fetching = False
+        db.commit()
+        return {"success": False, "error": "Feed URL is not allowed", "fetched": 0}
 
     source.is_fetching = True
     db.commit()
