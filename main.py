@@ -1027,22 +1027,104 @@ async def api_opml_import(request: Request, file: UploadFile):
     content = await file.read()
     root = ET.fromstring(content)
     imported = 0
+    skipped = 0
+
+    # Build folder name -> folder id map
+    user_folders = {
+        f.name: f.id for f in db.query(Folder).filter(Folder.user_id == user.id).all()
+    }
+
     for outline in root.iter("outline"):
-        if outline.get("type") == "rss" or outline.get("xmlUrl"):
+        # Folder container with nested outlines
+        if outline.get("xmlUrl") is None:
+            for child in outline:
+                url = child.get("xmlUrl")
+                title = child.get("text") or child.get("title") or url
+                folder_name = outline.get("text") or outline.get("title")
+                if url:
+                    norm = normalize_feed_url(url)
+                    existing_sub = (
+                        db.query(FeedSubscription)
+                        .join(FeedSource)
+                        .filter(
+                            FeedSubscription.user_id == user.id,
+                            FeedSource.normalized_url == norm,
+                        )
+                        .first()
+                    )
+                    if existing_sub:
+                        skipped += 1
+                        continue
+
+                    source = (
+                        db.query(FeedSource)
+                        .filter(FeedSource.normalized_url == norm)
+                        .first()
+                    )
+                    if not source:
+                        source = FeedSource(
+                            normalized_url=norm,
+                            display_url=url,
+                            site_url=url,
+                            title=title,
+                        )
+                        db.add(source)
+                        db.commit()
+                        db.refresh(source)
+
+                    folder_id = user_folders.get(folder_name)
+                    sub = FeedSubscription(
+                        user_id=user.id,
+                        feed_source_id=source.id,
+                        folder_id=folder_id,
+                        custom_title=title if title != norm else None,
+                    )
+                    db.add(sub)
+                    imported += 1
+        else:
             url = outline.get("xmlUrl")
             title = outline.get("text") or outline.get("title") or url
             if url:
-                feed = (
-                    db.query(Feed)
-                    .filter(Feed.user_id == user.id, Feed.url == url)
+                norm = normalize_feed_url(url)
+                existing_sub = (
+                    db.query(FeedSubscription)
+                    .join(FeedSource)
+                    .filter(
+                        FeedSubscription.user_id == user.id,
+                        FeedSource.normalized_url == norm,
+                    )
                     .first()
                 )
-                if not feed:
-                    feed = Feed(user_id=user.id, url=url, title=title)
-                    db.add(feed)
-                    imported += 1
+                if existing_sub:
+                    skipped += 1
+                    continue
+
+                source = (
+                    db.query(FeedSource)
+                    .filter(FeedSource.normalized_url == norm)
+                    .first()
+                )
+                if not source:
+                    source = FeedSource(
+                        normalized_url=norm,
+                        display_url=url,
+                        site_url=url,
+                        title=title,
+                    )
+                    db.add(source)
+                    db.commit()
+                    db.refresh(source)
+
+                sub = FeedSubscription(
+                    user_id=user.id,
+                    feed_source_id=source.id,
+                    custom_title=title if title != norm else None,
+                )
+                db.add(sub)
+                imported += 1
+
     db.commit()
-    return {"success": True, "imported": imported}
+    return {"success": True, "imported": imported, "skipped": skipped}
 
 
 @app.get("/api/opml/export")
@@ -1055,37 +1137,47 @@ async def api_opml_export(request: Request):
     head = ET.SubElement(root, "head")
     ET.SubElement(head, "title").text = f"{user.name or user.email}'s feedr feeds"
     body = ET.SubElement(root, "body")
+
     folders = db.query(Folder).filter(Folder.user_id == user.id).all()
     folder_map = {f.id: [] for f in folders}
     no_folder = []
-    feeds = db.query(Feed).filter(Feed.user_id == user.id).all()
-    for feed in feeds:
-        if feed.folder_id and feed.folder_id in folder_map:
-            folder_map[feed.folder_id].append(feed)
+
+    subscriptions = (
+        db.query(FeedSubscription).filter(FeedSubscription.user_id == user.id).all()
+    )
+    for sub in subscriptions:
+        source = sub.source
+        if sub.folder_id and sub.folder_id in folder_map:
+            folder_map[sub.folder_id].append(sub)
         else:
-            no_folder.append(feed)
+            no_folder.append(sub)
+
     for folder in folders:
         folder_el = ET.SubElement(body, "outline", text=folder.name, title=folder.name)
-        for feed in folder_map.get(folder.id, []):
+        for sub in folder_map.get(folder.id, []):
+            src = sub.source
             ET.SubElement(
                 folder_el,
                 "outline",
                 type="rss",
-                text=feed.title or feed.url,
-                title=feed.title or feed.url,
-                xmlUrl=feed.url,
-                htmlUrl=feed.site_url or feed.url,
+                text=sub.custom_title or src.title or src.display_url,
+                title=sub.custom_title or src.title or src.display_url,
+                xmlUrl=src.normalized_url,
+                htmlUrl=src.site_url or src.normalized_url,
             )
-    for feed in no_folder:
+
+    for sub in no_folder:
+        src = sub.source
         ET.SubElement(
             body,
             "outline",
             type="rss",
-            text=feed.title or feed.url,
-            title=feed.title or feed.url,
-            xmlUrl=feed.url,
-            htmlUrl=feed.site_url or feed.url,
+            text=sub.custom_title or src.title or src.display_url,
+            title=sub.custom_title or src.title or src.display_url,
+            xmlUrl=src.normalized_url,
+            htmlUrl=src.site_url or src.normalized_url,
         )
+
     xml_str = ET.tostring(root, encoding="unicode")
     return Response(
         content=xml_str,
