@@ -38,6 +38,28 @@ from urllib.parse import urlparse
 
 load_dotenv()
 
+DEFAULT_SECRET_KEY = "change-me-in-production"
+
+
+def normalized_app_url() -> str:
+    app_url = os.getenv("APP_URL", "http://localhost").strip() or "http://localhost"
+    if not app_url.startswith(("http://", "https://")):
+        app_url = "http://" + app_url
+    return app_url
+
+
+def is_local_hostname(hostname: Optional[str]) -> bool:
+    return (hostname or "").strip().lower() in {"localhost", "127.0.0.1", "::1"}
+
+
+APP_URL = normalized_app_url()
+APP_HOSTNAME = urlparse(APP_URL).hostname
+SESSION_SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
+SESSION_COOKIE_SECURE = urlparse(APP_URL).scheme == "https"
+
+if SESSION_SECRET_KEY == DEFAULT_SECRET_KEY and not is_local_hostname(APP_HOSTNAME):
+    raise RuntimeError("SECRET_KEY must be set for non-local deployments")
+
 
 def normalize_feed_url(url: str) -> str:
     url = url.strip()
@@ -88,8 +110,10 @@ app = FastAPI(title="feedr", description="A modern recreation of Google Reader")
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SECRET_KEY", "change-me-in-production"),
+    secret_key=SESSION_SECRET_KEY,
     max_age=3600 * 24 * 7,
+    same_site="lax",
+    https_only=SESSION_COOKIE_SECURE,
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -372,7 +396,7 @@ def get_current_user(request: Request, db: Session) -> Optional[User]:
 
 def is_local_auth_enabled(request: Request) -> bool:
     hostname = (request.url.hostname or "").lower()
-    if hostname in {"localhost", "127.0.0.1", "::1"}:
+    if is_local_hostname(hostname):
         return True
     return os.getenv("LOCAL_AUTH_ENABLED", "").lower() in {"1", "true", "yes", "on"}
 
@@ -578,10 +602,7 @@ async def auth_local(
 
 @app.get("/auth/google")
 async def auth_google(request: Request):
-    app_url = os.getenv("APP_URL", "http://localhost")
-    if not app_url.startswith(("http://", "https://")):
-        app_url = "http://" + app_url
-    redirect_uri = app_url + "/auth/callback"
+    redirect_uri = APP_URL + "/auth/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -1249,7 +1270,10 @@ async def api_opml_import(
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     content = await file.read()
-    root = ET.fromstring(content)
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return JSONResponse({"error": "Invalid OPML file"}, status_code=400)
     imported = 0
     skipped = 0
 

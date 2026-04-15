@@ -31,6 +31,24 @@ def test_opml_import_skips_localhost_feed_url(client, login_local):
     assert response.json()["skipped"] == 1
 
 
+def test_opml_import_rejects_malformed_xml(client, login_local):
+    login_local("security-user")
+
+    response = client.post(
+        "/api/opml/import",
+        files={
+            "file": (
+                "broken.opml",
+                "<opml><body><outline></body>",
+                "application/xml",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "Invalid OPML file"
+
+
 def test_background_fetch_refuses_non_public_source(app_module, db):
     source = app_module.FeedSource(
         normalized_url="http://127.0.0.1:8765/private.xml",
