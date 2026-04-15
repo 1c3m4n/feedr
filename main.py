@@ -14,7 +14,6 @@ from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import (
     Boolean,
     Column,
@@ -42,8 +41,7 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-jinja2_env = Environment(loader=FileSystemLoader("templates"), cache_size=0)
-templates = Jinja2Templates(env=jinja2_env)
+templates = Jinja2Templates(directory="templates")
 
 oauth = OAuth()
 oauth.register(
@@ -196,7 +194,7 @@ async def login_page(request: Request):
     db = next(get_db())
     if get_current_user(request, db):
         return RedirectResponse(url="/")
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 @app.get("/auth/google")
@@ -624,7 +622,7 @@ async def reader(request: Request):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login")
-    return templates.TemplateResponse("reader.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "reader.html", {"user": user})
 
 
 @app.get("/reader/settings", response_class=HTMLResponse)
@@ -633,6 +631,4 @@ async def reader_settings(request: Request):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login")
-    return templates.TemplateResponse(
-        "settings.html", {"request": request, "user": user}
-    )
+    return templates.TemplateResponse(request, "settings.html", {"user": user})
