@@ -718,6 +718,140 @@ async def api_mark_all_read(request: Request, feed_id: int):
     return {"success": True}
 
 
+# Shared Articles
+
+
+@app.get("/api/articles/shared")
+async def api_shared_articles(
+    request: Request,
+    friend_id: Optional[int] = None,
+    search: Optional[str] = None,
+    unread_only: bool = False,
+):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    # Find accepted friends
+    friend_ids_subquery = (
+        db.query(Friendship.requester_user_id)
+        .filter(
+            Friendship.addressee_user_id == user.id, Friendship.status == "accepted"
+        )
+        .union(
+            db.query(Friendship.addressee_user_id).filter(
+                Friendship.requester_user_id == user.id, Friendship.status == "accepted"
+            )
+        )
+        .subquery()
+    )
+
+    shares_query = db.query(ArticleShare).filter(
+        ArticleShare.user_id.in_(friend_ids_subquery)
+    )
+    if friend_id:
+        shares_query = shares_query.filter(ArticleShare.user_id == friend_id)
+
+    shares = shares_query.order_by(ArticleShare.created_at.desc()).all()
+
+    # Deduplicate by article_id while preserving sharer info
+    article_map = {}
+    for share in shares:
+        aid = share.article_id
+        sharer = db.query(User).filter(User.id == share.user_id).first()
+        sharer_info = {
+            "user_id": sharer.id,
+            "name": sharer.name or sharer.email,
+            "comment": share.comment,
+            "shared_at": share.created_at.isoformat() if share.created_at else None,
+        }
+        if aid not in article_map:
+            article_map[aid] = {"article": share.article, "sharers": []}
+        article_map[aid]["sharers"].append(sharer_info)
+
+    results = []
+    for aid, data in article_map.items():
+        a = data["article"]
+        if search:
+            haystack = f"{a.title or ''} {a.summary or ''} {a.content or ''}".lower()
+            if search.lower() not in haystack:
+                continue
+        state = (
+            db.query(UserArticleState)
+            .filter(
+                UserArticleState.user_id == user.id,
+                UserArticleState.article_id == a.id,
+            )
+            .first()
+        )
+        if unread_only and (state and state.is_read):
+            continue
+        results.append(
+            {
+                "id": a.id,
+                "title": a.title or "Untitled",
+                "link": a.link,
+                "summary": a.summary,
+                "content": a.content,
+                "published_at": a.published_at.isoformat() if a.published_at else None,
+                "feed_title": a.source.title or a.source.display_url,
+                "is_read": state.is_read if state else False,
+                "sharers": data["sharers"],
+            }
+        )
+
+    return {"articles": results}
+
+
+@app.post("/api/articles/{article_id}/share")
+async def api_share_article(
+    request: Request, article_id: int, comment: Optional[str] = Form(None)
+):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    article = db.query(SharedArticle).filter(SharedArticle.id == article_id).first()
+    if not article:
+        return JSONResponse({"error": "Article not found"}, status_code=404)
+
+    existing = (
+        db.query(ArticleShare)
+        .filter(ArticleShare.user_id == user.id, ArticleShare.article_id == article_id)
+        .first()
+    )
+    if existing:
+        existing.comment = comment
+        db.commit()
+        return {"success": True, "share_id": existing.id, "updated": True}
+
+    share = ArticleShare(user_id=user.id, article_id=article_id, comment=comment)
+    db.add(share)
+    db.commit()
+    db.refresh(share)
+    return {"success": True, "share_id": share.id}
+
+
+@app.delete("/api/articles/{article_id}/share")
+async def api_unshare_article(request: Request, article_id: int):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    share = (
+        db.query(ArticleShare)
+        .filter(ArticleShare.user_id == user.id, ArticleShare.article_id == article_id)
+        .first()
+    )
+    if share:
+        db.delete(share)
+        db.commit()
+    return {"success": True}
+
+
 # Friends
 
 

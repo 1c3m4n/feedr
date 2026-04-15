@@ -336,7 +336,8 @@
                     <button onclick="openAddFeedModal()">+ Feed</button>
                 </div>
                 <div class="feed-list" id="feedList">
-                    <div class="feed-item all-feeds active" onclick="selectFeed(null)">All items</div>
+                    <div class="feed-item all-feeds active" onclick="selectFeed(null)" id="allFeedsBtn">All items</div>
+                    <div class="feed-item shared-feeds-btn" onclick="selectSharedFeeds()" id="sharedFeedsBtn">Shared from friends</div>
                     <div class="feed-item unread-only-btn" onclick="toggleUnreadOnly()" id="unreadOnlyBtn">Unread only</div>
                     <div id="feedTree"></div>
                 </div>
@@ -358,7 +359,10 @@
                         <div class="content-meta">
                             <span id="contentFeed"></span> • <span id="contentDate"></span>
                             • <a href="#" id="contentLink" target="_blank">Open original</a>
+                            • <button id="shareBtn" onclick="shareCurrentArticle()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;padding:0">Share with friends</button>
+                            • <span id="shareStatus" style="font-size:12px;color:var(--text-secondary);display:none">Shared ✓</span>
                         </div>
+                        <div id="contentSharers" style="display:none;margin-top:8px;font-size:12px;color:var(--text-secondary)"></div>
                     </div>
                     <div class="content-body" id="contentHtml"></div>
                 </div>
@@ -401,6 +405,7 @@
         let selectedArticleIndex = -1;
         let unreadOnly = false;
         let searchQuery = '';
+        let viewMode = 'feeds'; // 'feeds' | 'shared'
 
         // Theme
         function initTheme() {
@@ -466,10 +471,17 @@
         }
 
         async function loadArticles() {
-            let url = '/api/articles?';
-            if (selectedFeedId) url += `feed_id=${selectedFeedId}&`;
-            if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
-            if (unreadOnly) url += 'unread_only=true&';
+            let url;
+            if (viewMode === 'shared') {
+                url = '/api/articles/shared?';
+                if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
+                if (unreadOnly) url += 'unread_only=true&';
+            } else {
+                url = '/api/articles?';
+                if (selectedFeedId) url += `feed_id=${selectedFeedId}&`;
+                if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
+                if (unreadOnly) url += 'unread_only=true&';
+            }
             const res = await fetch(url);
             const data = await res.json();
             articles = data.articles;
@@ -486,21 +498,28 @@
                 const date = a.published_at ? new Date(a.published_at).toLocaleString() : '';
                 const unreadClass = !a.is_read ? 'unread' : 'is-read';
                 const selectedClass = i === selectedArticleIndex ? 'selected' : '';
+                let meta = `${a.feed_title} • ${date}`;
+                if (viewMode === 'shared' && a.sharers && a.sharers.length) {
+                    const sharerNames = a.sharers.map(s => s.name).join(', ');
+                    meta = `Shared by ${sharerNames} • ${meta}`;
+                }
                 return `<div class="article-item ${unreadClass} ${selectedClass}" data-idx="${i}" onclick="selectArticle(${i})">
                     <div class="article-title">${a.title}</div>
-                    <div class="article-meta">${a.feed_title} • ${date}</div>
+                    <div class="article-meta">${meta}</div>
                 </div>`;
             }).join('');
         }
 
         function selectFeed(id) {
+            viewMode = 'feeds';
             selectedFeedId = id;
             selectedArticleIndex = -1;
             unreadOnly = false;
             document.getElementById('unreadOnlyBtn').classList.remove('active');
             document.querySelectorAll('.feed-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('allFeedsBtn').classList.toggle('active', id === null);
+            document.getElementById('sharedFeedsBtn').classList.remove('active');
             if (id === null) {
-                document.querySelector('.feed-item.all-feeds').classList.add('active');
                 document.getElementById('feedTitle').textContent = 'All items';
                 document.getElementById('markAllReadBtn').style.display = 'none';
             } else {
@@ -510,6 +529,20 @@
                 document.getElementById('feedTitle').textContent = feed ? feed.title : 'Feed';
                 document.getElementById('markAllReadBtn').style.display = 'inline-block';
             }
+            closeContentPane();
+            loadArticles();
+        }
+
+        function selectSharedFeeds() {
+            viewMode = 'shared';
+            selectedFeedId = null;
+            selectedArticleIndex = -1;
+            unreadOnly = false;
+            document.getElementById('unreadOnlyBtn').classList.remove('active');
+            document.querySelectorAll('.feed-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('sharedFeedsBtn').classList.add('active');
+            document.getElementById('feedTitle').textContent = 'Shared from friends';
+            document.getElementById('markAllReadBtn').style.display = 'none';
             closeContentPane();
             loadArticles();
         }
@@ -535,6 +568,31 @@
             document.getElementById('contentLink').href = a.link;
             document.getElementById('contentHtml').innerHTML = a.content || a.summary || '<p>No content</p>';
 
+            // Sharer info for shared view
+            const sharersEl = document.getElementById('contentSharers');
+            if (viewMode === 'shared' && a.sharers && a.sharers.length) {
+                const lines = a.sharers.map(s => {
+                    let line = `Shared by ${s.name}`;
+                    if (s.comment) line += `: "${s.comment}"`;
+                    return line;
+                });
+                sharersEl.innerHTML = lines.join('<br>');
+                sharersEl.style.display = 'block';
+            } else {
+                sharersEl.style.display = 'none';
+            }
+
+            // Share button visibility
+            const shareBtn = document.getElementById('shareBtn');
+            const shareStatus = document.getElementById('shareStatus');
+            if (viewMode === 'shared') {
+                shareBtn.style.display = 'none';
+                shareStatus.style.display = 'none';
+            } else {
+                shareBtn.style.display = 'inline';
+                shareStatus.style.display = 'none';
+            }
+
             if (window.innerWidth <= 900) {
                 contentPane.classList.add('open');
             }
@@ -544,6 +602,16 @@
                 a.is_read = true;
                 renderArticles();
                 loadFeeds(); // refresh unread counts
+            }
+        }
+
+        async function shareCurrentArticle() {
+            const a = articles[selectedArticleIndex];
+            if (!a) return;
+            const res = await fetch(`/api/articles/${a.id}/share`, { method: 'POST' });
+            if (res.ok) {
+                document.getElementById('shareBtn').style.display = 'none';
+                document.getElementById('shareStatus').style.display = 'inline';
             }
         }
 
