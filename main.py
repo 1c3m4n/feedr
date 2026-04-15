@@ -55,7 +55,11 @@ oauth.register(
 DB_PATH = os.getenv("DATABASE_URL", "sqlite:////storage/feedr.db").replace(
     "sqlite:///", ""
 )
-os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+try:
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+except PermissionError:
+    DB_PATH = "feedr.db"
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 engine = create_engine(
     f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False}
 )
@@ -140,6 +144,136 @@ class ReadState(Base):
 
     user = relationship("User", back_populates="read_states")
     article = relationship("Article", back_populates="read_states")
+
+
+# v2 normalized schema (shared feeds and articles)
+
+
+class FeedSource(Base):
+    __tablename__ = "feed_sources"
+    id = Column(Integer, primary_key=True, index=True)
+    normalized_url = Column(String, nullable=False, unique=True, index=True)
+    display_url = Column(String, nullable=False)
+    site_url = Column(String)
+    title = Column(String)
+    description = Column(Text)
+    etag = Column(String)
+    last_modified = Column(String)
+    last_fetched_at = Column(DateTime)
+    last_successful_fetch_at = Column(DateTime)
+    fetch_status = Column(String, default="unknown")
+    fetch_error = Column(Text)
+    is_fetching = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    subscriptions = relationship("FeedSubscription", back_populates="source")
+    shared_articles = relationship("SharedArticle", back_populates="source")
+
+
+class FeedSubscription(Base):
+    __tablename__ = "feed_subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    feed_source_id = Column(Integer, ForeignKey("feed_sources.id"), nullable=False)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
+    custom_title = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "feed_source_id", name="uix_subscription_user_source"
+        ),
+    )
+
+    user = relationship("User")
+    source = relationship("FeedSource", back_populates="subscriptions")
+    folder = relationship("Folder")
+
+
+class SharedArticle(Base):
+    __tablename__ = "shared_articles"
+    id = Column(Integer, primary_key=True, index=True)
+    feed_source_id = Column(Integer, ForeignKey("feed_sources.id"), nullable=False)
+    guid = Column(String, nullable=False)
+    canonical_key = Column(String, nullable=False)
+    title = Column(String)
+    link = Column(String)
+    summary = Column(Text)
+    content = Column(Text)
+    author = Column(String)
+    published_at = Column(DateTime)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "feed_source_id", "canonical_key", name="uix_shared_article_key"
+        ),
+    )
+
+    source = relationship("FeedSource", back_populates="shared_articles")
+    states = relationship(
+        "UserArticleState", back_populates="article", cascade="all, delete-orphan"
+    )
+    shares = relationship(
+        "ArticleShare", back_populates="article", cascade="all, delete-orphan"
+    )
+
+
+class UserArticleState(Base):
+    __tablename__ = "user_article_states"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    article_id = Column(Integer, ForeignKey("shared_articles.id"), nullable=False)
+    is_read = Column(Boolean, default=False)
+    read_at = Column(DateTime)
+    is_starred = Column(Boolean, default=False)
+    starred_at = Column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id", name="uix_user_article_state"),
+    )
+
+    user = relationship("User")
+    article = relationship("SharedArticle", back_populates="states")
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+    id = Column(Integer, primary_key=True, index=True)
+    requester_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    addressee_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    accepted_at = Column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint(
+            requester_user_id, addressee_user_id, name="uix_friendship_pair"
+        ),
+    )
+
+    requester = relationship("User", foreign_keys=[requester_user_id])
+    addressee = relationship("User", foreign_keys=[addressee_user_id])
+
+
+class ArticleShare(Base):
+    __tablename__ = "article_shares"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    article_id = Column(Integer, ForeignKey("shared_articles.id"), nullable=False)
+    comment = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "article_id", name="uix_article_share_user_article"
+        ),
+    )
+
+    user = relationship("User")
+    article = relationship("SharedArticle", back_populates="shares")
 
 
 Base.metadata.create_all(bind=engine)
@@ -291,8 +425,12 @@ async def api_add_feed(
     db.add(feed)
     db.commit()
     db.refresh(feed)
-    fetch_feed_articles(db, feed)
-    return {"success": True, "feed": {"id": feed.id, "title": feed.title}}
+    fetch_result = fetch_feed_articles(db, feed)
+    return {
+        "success": True,
+        "feed": {"id": feed.id, "title": feed.title},
+        "fetch": fetch_result,
+    }
 
 
 @app.delete("/api/feeds/{feed_id}")
@@ -554,11 +692,22 @@ async def api_opml_export(request: Request):
 # Fetcher
 
 
-def fetch_feed_articles(db: Session, feed: Feed):
+def fetch_feed_articles(db: Session, feed: Feed) -> dict:
     try:
-        parsed = feedparser.parse(feed.url)
-    except Exception:
-        return
+        parsed = feedparser.parse(
+            feed.url, agent="feedr/1.0 (+https://github.com/1c3m4n/feedr)"
+        )
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "fetched": 0}
+
+    if parsed.get("bozo") and parsed.get("bozo_exception"):
+        # Some feeds set bozo for minor issues; still try to use entries
+        pass
+
+    if not parsed.entries:
+        return {"success": False, "error": "No entries found in feed", "fetched": 0}
+
+    added = 0
     for entry in parsed.entries[:50]:
         guid = entry.get("id") or entry.get("link") or entry.get("title", "")
         if not guid:
@@ -593,8 +742,10 @@ def fetch_feed_articles(db: Session, feed: Feed):
             published_at=published,
         )
         db.add(article)
+        added += 1
     feed.last_fetched_at = datetime.utcnow()
     db.commit()
+    return {"success": True, "fetched": added}
 
 
 def background_fetcher():

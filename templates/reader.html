@@ -577,11 +577,15 @@
             const form = new FormData();
             form.append('url', url);
             if (folderId) form.append('folder_id', folderId);
-            await fetch('/api/feeds', { method: 'POST', body: form });
+            const res = await fetch('/api/feeds', { method: 'POST', body: form });
+            const data = await res.json();
             closeModal('addFeedModal');
             document.getElementById('feedUrl').value = '';
             loadFeeds();
             loadArticles();
+            if (data.fetch && !data.fetch.success) {
+                alert(`Feed added, but article fetch failed: ${data.fetch.error}`);
+            }
         }
         function openAddFolderModal() { document.getElementById('addFolderModal').classList.add('active'); }
         async function submitAddFolder() {
