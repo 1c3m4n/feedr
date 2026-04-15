@@ -16,8 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Create /storage directory for Once compatibility
+RUN mkdir -p /storage && chmod 777 /storage
+
 ENV PYTHONUNBUFFERED=1
-ENV DATABASE_URL=sqlite:///./data/feedr.db
+ENV DATABASE_URL=sqlite:///storage/feedr.db
 ENV APP_URL=http://localhost
 
 EXPOSE 80

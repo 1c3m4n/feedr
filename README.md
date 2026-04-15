@@ -39,7 +39,7 @@ Returns:
 3. Add `http://localhost/auth/callback` as an authorized redirect URI
 4. Copy the Client ID and Client Secret into your `.env` file
 
-## Docker
+## Docker / Once
 
 ```bash
 docker run -d -p 80:80 \
@@ -47,9 +47,11 @@ docker run -d -p 80:80 \
   -e GOOGLE_CLIENT_SECRET=your-secret \
   -e SECRET_KEY=your-secret-key \
   -e APP_URL=https://your-domain.com \
-  -v feedr-data:/app/data \
+  -v feedr-data:/storage \
   ghcr.io/1c3m4n/feedr:latest
 ```
+
+Data is stored in `/storage` inside the container for compatibility with Once.
 
 ## Features
 

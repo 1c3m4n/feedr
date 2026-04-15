@@ -14,6 +14,7 @@ from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import (
     Boolean,
     Column,
@@ -41,7 +42,8 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+jinja2_env = Environment(loader=FileSystemLoader("templates"), cache_size=0)
+templates = Jinja2Templates(env=jinja2_env)
 
 oauth = OAuth()
 oauth.register(
@@ -52,7 +54,9 @@ oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 
-DB_PATH = os.getenv("DATABASE_URL", "sqlite:///./feedr.db").replace("sqlite:///", "")
+DB_PATH = os.getenv("DATABASE_URL", "sqlite:///storage/feedr.db").replace(
+    "sqlite:///", ""
+)
 os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 engine = create_engine(
     f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False}
