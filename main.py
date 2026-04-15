@@ -692,32 +692,75 @@ async def api_opml_export(request: Request):
 # Fetcher
 
 
-def fetch_feed_articles(db: Session, feed: Feed) -> dict:
+def _derive_canonical_key(entry: dict) -> str:
+    guid = entry.get("id") or ""
+    if guid:
+        return guid.strip()
+    link = entry.get("link") or ""
+    if link:
+        return link.strip()
+    title = entry.get("title") or ""
+    return hashlib.sha256(f"{title}:{link}".encode()).hexdigest()
+
+
+def fetch_source_articles(db: Session, source: FeedSource) -> dict:
+    if source.is_fetching:
+        return {"success": False, "error": "Already fetching", "fetched": 0}
+
+    source.is_fetching = True
+    db.commit()
+
     try:
-        parsed = feedparser.parse(
-            feed.url, agent="feedr/1.0 (+https://github.com/1c3m4n/feedr)"
-        )
+        agent = "feedr/1.0 (+https://github.com/1c3m4n/feedr)"
+        kwargs = {"agent": agent}
+        if source.etag:
+            kwargs["etag"] = source.etag
+        if source.last_modified:
+            kwargs["modified"] = source.last_modified
+
+        parsed = feedparser.parse(source.normalized_url, **kwargs)
     except Exception as exc:
+        source.fetch_status = "error"
+        source.fetch_error = str(exc)
+        source.last_fetched_at = datetime.utcnow()
+        source.is_fetching = False
+        db.commit()
         return {"success": False, "error": str(exc), "fetched": 0}
 
+    # Update conditional request headers if provided by server
+    if hasattr(parsed, "etag") and parsed.etag:
+        source.etag = parsed.etag
+    if hasattr(parsed, "modified") and parsed.modified:
+        source.last_modified = parsed.modified
+
+    if parsed.get("status") == 304:
+        source.fetch_status = "ok"
+        source.last_fetched_at = datetime.utcnow()
+        source.fetch_error = None
+        source.is_fetching = False
+        db.commit()
+        return {"success": True, "fetched": 0, "message": "Not modified"}
+
     if parsed.get("bozo") and parsed.get("bozo_exception"):
-        # Some feeds set bozo for minor issues; still try to use entries
         pass
 
-    if not parsed.entries:
-        return {"success": False, "error": "No entries found in feed", "fetched": 0}
-
     added = 0
+    skipped = 0
     for entry in parsed.entries[:50]:
-        guid = entry.get("id") or entry.get("link") or entry.get("title", "")
-        if not guid:
+        ckey = _derive_canonical_key(entry)
+        if not ckey:
+            skipped += 1
             continue
         existing = (
-            db.query(Article)
-            .filter(Article.feed_id == feed.id, Article.guid == guid)
+            db.query(SharedArticle)
+            .filter(
+                SharedArticle.feed_source_id == source.id,
+                SharedArticle.canonical_key == ckey,
+            )
             .first()
         )
         if existing:
+            skipped += 1
             continue
         title = entry.get("title", "Untitled")
         link = entry.get("link", "")
@@ -727,34 +770,71 @@ def fetch_feed_articles(db: Session, feed: Feed) -> dict:
             if entry.get("content")
             else summary
         )
+        author = entry.get("author", "")
         published = None
         if entry.get("published_parsed"):
             published = datetime(*entry.published_parsed[:6])
         elif entry.get("updated_parsed"):
             published = datetime(*entry.updated_parsed[:6])
-        article = Article(
-            feed_id=feed.id,
-            guid=guid,
+        article = SharedArticle(
+            feed_source_id=source.id,
+            guid=entry.get("id", ""),
+            canonical_key=ckey,
             title=title,
             link=link,
             summary=summary,
             content=content,
+            author=author,
             published_at=published,
         )
         db.add(article)
         added += 1
-    feed.last_fetched_at = datetime.utcnow()
+
+    source.last_fetched_at = datetime.utcnow()
+    source.fetch_status = "ok"
+    source.fetch_error = None
+    source.last_successful_fetch_at = datetime.utcnow()
+    source.is_fetching = False
     db.commit()
-    return {"success": True, "fetched": added}
+    return {"success": True, "fetched": added, "skipped": skipped}
+
+
+def fetch_feed_articles(db: Session, feed: Feed) -> dict:
+    """Legacy compatibility wrapper. Finds or creates the v2 source and fetches it."""
+    from urllib.parse import urlparse
+
+    url = feed.url.strip()
+    if url.startswith("feed://"):
+        url = "http://" + url[7:]
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower() if parsed.scheme else "http"
+    netloc = parsed.netloc.lower().strip()
+    path = parsed.path.rstrip("/") or "/"
+    norm = f"{scheme}://{netloc}{path}"
+
+    source = db.query(FeedSource).filter(FeedSource.normalized_url == norm).first()
+    if not source:
+        source = FeedSource(
+            normalized_url=norm,
+            display_url=feed.url,
+            site_url=feed.site_url or feed.url,
+            title=feed.title,
+            description=feed.description,
+        )
+        db.add(source)
+        db.commit()
+        db.refresh(source)
+
+    return fetch_source_articles(db, source)
 
 
 def background_fetcher():
     while True:
         try:
             db = SessionLocal()
-            feeds = db.query(Feed).all()
-            for feed in feeds:
-                fetch_feed_articles(db, feed)
+            sources = db.query(FeedSource).all()
+            for source in sources:
+                fetch_source_articles(db, source)
                 time.sleep(1)
         except Exception:
             pass
