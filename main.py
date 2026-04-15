@@ -1527,8 +1527,14 @@ def background_fetcher():
         time.sleep(300)
 
 
-fetcher_thread = threading.Thread(target=background_fetcher, daemon=True)
-fetcher_thread.start()
+if os.getenv("FEEDR_DISABLE_BACKGROUND_FETCHER", "").lower() not in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}:
+    fetcher_thread = threading.Thread(target=background_fetcher, daemon=True)
+    fetcher_thread.start()
 
 
 # Reader UI

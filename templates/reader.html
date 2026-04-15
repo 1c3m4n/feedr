@@ -750,7 +750,7 @@
         let articles = [];
         let selectedFeedId = null;
         let selectedArticleIndex = -1;
-        let unreadOnly = false;
+        let unreadOnly = true;
         let searchQuery = '';
         let viewMode = 'feeds'; // 'feeds' | 'shared'
         let friendState = { friends: [], pending_sent: [], pending_received: [] };
@@ -774,7 +774,13 @@
             btn.textContent = theme === 'dark' ? '☼' : '◐';
             btn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
         }
+        function syncUnreadOnlyButton() {
+            const btn = document.getElementById('unreadOnlyBtn');
+            if (!btn) return;
+            btn.classList.toggle('active', unreadOnly);
+        }
         initTheme();
+        syncUnreadOnlyButton();
 
         async function loadFeeds() {
             const res = await fetch('/api/feeds');
@@ -987,7 +993,7 @@
 
         function toggleUnreadOnly() {
             unreadOnly = !unreadOnly;
-            document.getElementById('unreadOnlyBtn').classList.toggle('active', unreadOnly);
+            syncUnreadOnlyButton();
             loadArticles();
         }
 

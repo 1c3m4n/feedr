@@ -19,6 +19,7 @@ Prefer following the existing codebase over generic framework defaults.
 
 - Always push the package image to GitHub Container Registry after completing requested app changes: `ghcr.io/1c3m4n/feedr:latest`.
 - Fizzy is required for work tracking. Create or update the relevant Fizzy card for every meaningful task, feature, fix, or polish pass.
+- For GitHub publishing, pushing, and PR workflows, prefer the `github-1c3m4n` skill defaults: assume `gh` is already authenticated as `1c3m4n`, prefer SSH remotes, and avoid re-checking login unless a GitHub command fails.
 - Assume multiple agents or models may be working in the repo; avoid undoing unrelated work.
 - Keep this file aligned with the real workflow if the team changes tools or release steps.
 
@@ -165,6 +166,7 @@ pytest -k subscription
 - Do not change the app off port `80` in the Dockerfile unless explicitly asked.
 - Build and push `ghcr.io/1c3m4n/feedr:latest` after requested code changes unless the user explicitly says not to.
 - Fizzy is mandatory. Record and track work in Fizzy for every meaningful change, not just larger tasks.
+- Prefer the `github-1c3m4n` skill workflow for branch publish, remote setup, and PR creation in this repo.
 - Verify UI-facing changes in a browser when practical.
 - Avoid broad refactors unless they are necessary for correctness.
 

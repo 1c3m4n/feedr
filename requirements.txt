@@ -10,3 +10,4 @@ starlette
 sqlalchemy
 feedparser
 python-dateutil
+pytest
