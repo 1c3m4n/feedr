@@ -718,6 +718,169 @@ async def api_mark_all_read(request: Request, feed_id: int):
     return {"success": True}
 
 
+# Friends
+
+
+@app.get("/api/friends")
+async def api_friends(request: Request):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    sent = db.query(Friendship).filter(Friendship.requester_user_id == user.id).all()
+    received = (
+        db.query(Friendship).filter(Friendship.addressee_user_id == user.id).all()
+    )
+
+    friends = []
+    pending_sent = []
+    pending_received = []
+
+    for f in sent:
+        other = db.query(User).filter(User.id == f.addressee_user_id).first()
+        item = {
+            "friendship_id": f.id,
+            "user_id": other.id,
+            "email": other.email,
+            "name": other.name,
+            "status": f.status,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        }
+        if f.status == "accepted":
+            friends.append(item)
+        else:
+            pending_sent.append(item)
+
+    for f in received:
+        other = db.query(User).filter(User.id == f.requester_user_id).first()
+        item = {
+            "friendship_id": f.id,
+            "user_id": other.id,
+            "email": other.email,
+            "name": other.name,
+            "status": f.status,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        }
+        if f.status == "accepted":
+            friends.append(item)
+        elif f.status == "pending":
+            pending_received.append(item)
+
+    return {
+        "friends": friends,
+        "pending_sent": pending_sent,
+        "pending_received": pending_received,
+    }
+
+
+@app.post("/api/friends/request")
+async def api_request_friend(request: Request, email: str = Form(...)):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    target = db.query(User).filter(User.email == email.strip()).first()
+    if not target:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+    if target.id == user.id:
+        return JSONResponse({"error": "Cannot friend yourself"}, status_code=400)
+
+    a, b = (user.id, target.id)
+    existing = (
+        db.query(Friendship)
+        .filter(
+            Friendship.requester_user_id == a,
+            Friendship.addressee_user_id == b,
+        )
+        .first()
+    )
+    if not existing:
+        existing = (
+            db.query(Friendship)
+            .filter(
+                Friendship.requester_user_id == b,
+                Friendship.addressee_user_id == a,
+            )
+            .first()
+        )
+
+    if existing:
+        if existing.status == "accepted":
+            return JSONResponse({"error": "Already friends"}, status_code=409)
+        return JSONResponse(
+            {"error": "Request already pending", "friendship_id": existing.id},
+            status_code=409,
+        )
+
+    friendship = Friendship(
+        requester_user_id=user.id,
+        addressee_user_id=target.id,
+        status="pending",
+    )
+    db.add(friendship)
+    db.commit()
+    db.refresh(friendship)
+    return {"success": True, "friendship_id": friendship.id}
+
+
+@app.post("/api/friends/{friendship_id}/accept")
+async def api_accept_friend(request: Request, friendship_id: int):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    friendship = db.query(Friendship).filter(Friendship.id == friendship_id).first()
+    if not friendship or friendship.addressee_user_id != user.id:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if friendship.status != "pending":
+        return JSONResponse({"error": "Not pending"}, status_code=400)
+
+    friendship.status = "accepted"
+    friendship.accepted_at = datetime.utcnow()
+    db.commit()
+    return {"success": True}
+
+
+@app.post("/api/friends/{friendship_id}/decline")
+async def api_decline_friend(request: Request, friendship_id: int):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    friendship = db.query(Friendship).filter(Friendship.id == friendship_id).first()
+    if not friendship or friendship.addressee_user_id != user.id:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    db.delete(friendship)
+    db.commit()
+    return {"success": True}
+
+
+@app.delete("/api/friends/{friendship_id}")
+async def api_remove_friend(request: Request, friendship_id: int):
+    db = next(get_db())
+    user = get_current_user(request, db)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    friendship = db.query(Friendship).filter(Friendship.id == friendship_id).first()
+    if not friendship:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if (
+        friendship.requester_user_id != user.id
+        and friendship.addressee_user_id != user.id
+    ):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    db.delete(friendship)
+    db.commit()
+    return {"success": True}
+
+
 # OPML
 
 
