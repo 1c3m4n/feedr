@@ -546,7 +546,7 @@ async def api_delete_folder(request: Request, folder_id: int):
     return {"success": True}
 
 
-# Articles
+# Articles (v2)
 
 
 @app.get("/api/articles")
@@ -560,28 +560,52 @@ async def api_articles(
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    query = db.query(Article).join(Feed).filter(Feed.user_id == user.id)
+
+    # Base query: articles from sources the user subscribes to
+    sub_source_ids = (
+        db.query(FeedSubscription.feed_source_id)
+        .filter(FeedSubscription.user_id == user.id)
+        .subquery()
+    )
+    query = db.query(SharedArticle).filter(
+        SharedArticle.feed_source_id.in_(sub_source_ids)
+    )
+
     if feed_id:
-        query = query.filter(Article.feed_id == feed_id)
+        # feed_id here is a subscription id; resolve to source
+        sub = (
+            db.query(FeedSubscription)
+            .filter(FeedSubscription.id == feed_id, FeedSubscription.user_id == user.id)
+            .first()
+        )
+        if sub:
+            query = query.filter(SharedArticle.feed_source_id == sub.feed_source_id)
+
     if search:
         query = query.filter(
             or_(
-                Article.title.contains(search),
-                Article.summary.contains(search),
-                Article.content.contains(search),
+                SharedArticle.title.contains(search),
+                SharedArticle.summary.contains(search),
+                SharedArticle.content.contains(search),
             )
         )
+
     if unread_only:
-        read_ids = db.query(ReadState.article_id).filter(
-            ReadState.user_id == user.id, ReadState.is_read == True
+        read_ids = db.query(UserArticleState.article_id).filter(
+            UserArticleState.user_id == user.id, UserArticleState.is_read == True
         )
-        query = query.filter(~Article.id.in_(read_ids))
-    articles = query.order_by(Article.published_at.desc()).limit(200).all()
+        query = query.filter(~SharedArticle.id.in_(read_ids))
+
+    articles = query.order_by(SharedArticle.published_at.desc()).limit(200).all()
+
     result = []
     for a in articles:
-        rs = (
-            db.query(ReadState)
-            .filter(ReadState.user_id == user.id, ReadState.article_id == a.id)
+        state = (
+            db.query(UserArticleState)
+            .filter(
+                UserArticleState.user_id == user.id,
+                UserArticleState.article_id == a.id,
+            )
             .first()
         )
         result.append(
@@ -592,8 +616,8 @@ async def api_articles(
                 "summary": a.summary,
                 "content": a.content,
                 "published_at": a.published_at.isoformat() if a.published_at else None,
-                "feed_title": a.feed.title or a.feed.url,
-                "is_read": rs.is_read if rs else False,
+                "feed_title": a.source.title or a.source.display_url,
+                "is_read": state.is_read if state else False,
             }
         )
     return {"articles": result}
@@ -605,22 +629,25 @@ async def api_mark_read(request: Request, article_id: int):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    rs = (
-        db.query(ReadState)
-        .filter(ReadState.user_id == user.id, ReadState.article_id == article_id)
+    state = (
+        db.query(UserArticleState)
+        .filter(
+            UserArticleState.user_id == user.id,
+            UserArticleState.article_id == article_id,
+        )
         .first()
     )
-    if not rs:
-        rs = ReadState(
+    if not state:
+        state = UserArticleState(
             user_id=user.id,
             article_id=article_id,
             is_read=True,
             read_at=datetime.utcnow(),
         )
-        db.add(rs)
+        db.add(state)
     else:
-        rs.is_read = True
-        rs.read_at = datetime.utcnow()
+        state.is_read = True
+        state.read_at = datetime.utcnow()
     db.commit()
     return {"success": True}
 
@@ -631,17 +658,20 @@ async def api_mark_unread(request: Request, article_id: int):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    rs = (
-        db.query(ReadState)
-        .filter(ReadState.user_id == user.id, ReadState.article_id == article_id)
+    state = (
+        db.query(UserArticleState)
+        .filter(
+            UserArticleState.user_id == user.id,
+            UserArticleState.article_id == article_id,
+        )
         .first()
     )
-    if not rs:
-        rs = ReadState(user_id=user.id, article_id=article_id, is_read=False)
-        db.add(rs)
+    if not state:
+        state = UserArticleState(user_id=user.id, article_id=article_id, is_read=False)
+        db.add(state)
     else:
-        rs.is_read = False
-        rs.read_at = None
+        state.is_read = False
+        state.read_at = None
     db.commit()
     return {"success": True}
 
@@ -652,27 +682,38 @@ async def api_mark_all_read(request: Request, feed_id: int):
     user = get_current_user(request, db)
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    feed = db.query(Feed).filter(Feed.id == feed_id, Feed.user_id == user.id).first()
-    if not feed:
+    sub = (
+        db.query(FeedSubscription)
+        .filter(FeedSubscription.id == feed_id, FeedSubscription.user_id == user.id)
+        .first()
+    )
+    if not sub:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    articles = db.query(Article).filter(Article.feed_id == feed_id).all()
+    articles = (
+        db.query(SharedArticle)
+        .filter(SharedArticle.feed_source_id == sub.feed_source_id)
+        .all()
+    )
     for article in articles:
-        rs = (
-            db.query(ReadState)
-            .filter(ReadState.user_id == user.id, ReadState.article_id == article.id)
+        state = (
+            db.query(UserArticleState)
+            .filter(
+                UserArticleState.user_id == user.id,
+                UserArticleState.article_id == article.id,
+            )
             .first()
         )
-        if not rs:
-            rs = ReadState(
+        if not state:
+            state = UserArticleState(
                 user_id=user.id,
                 article_id=article.id,
                 is_read=True,
                 read_at=datetime.utcnow(),
             )
-            db.add(rs)
+            db.add(state)
         else:
-            rs.is_read = True
-            rs.read_at = datetime.utcnow()
+            state.is_read = True
+            state.read_at = datetime.utcnow()
     db.commit()
     return {"success": True}
 
