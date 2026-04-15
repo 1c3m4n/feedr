@@ -197,7 +197,7 @@ async def login_page(request: Request):
 
 @app.get("/auth/google")
 async def auth_google(request: Request):
-    redirect_uri = os.getenv("APP_URL", "http://localhost:8000") + "/auth/callback"
+    redirect_uri = os.getenv("APP_URL", "http://localhost") + "/auth/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
